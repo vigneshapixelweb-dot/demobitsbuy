@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import {
   SafeAreaView,
@@ -47,25 +46,31 @@ const ACTIONS = [
 const MARKET_ROWS = [
   {
     key: "btc",
-    pair: "BTC/USDT",
+    base: "BTC",
+    quote: "USDT",
     volume: "2.25B",
     price: "70,548.15",
+    subPrice: "$70,548.15",
     change: "+1.7%",
     up: true,
   },
   {
     key: "usdc",
-    pair: "USDC/USDT",
+    base: "USDC",
+    quote: "USDT",
     volume: "1.08B",
     price: "0.999",
-    change: "+3.6%",
+    subPrice: "$0.9999",
+    change: "-3.6%",
     up: false,
   },
   {
     key: "eth",
-    pair: "ETH/USDT",
+    base: "ETH",
+    quote: "USDT",
     volume: "1.03B",
     price: "2,075.14",
+    subPrice: "$2,075.14",
     change: "+4.8%",
     up: true,
   },
@@ -78,7 +83,6 @@ const asGradient = (colors: readonly string[]) =>
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const colorScheme = useColorScheme() ?? "dark";
   const palette = AppColors[colorScheme];
   const isDark = colorScheme === "dark";
@@ -91,19 +95,35 @@ export default function DashboardScreen() {
     [insets.bottom],
   );
 
+  const cardBg = isDark ? palette.surface : palette.primary;
+  const cardBorder = isDark ? palette.border : "transparent";
   const cardTextColor = isDark ? palette.text : palette.onPrimary;
-  const cardMutedText = isDark ? palette.textMuted : "rgba(255, 255, 255, 0.7)";
+  const cardMutedText = isDark ? palette.textMuted : "rgba(255,255,255,0.75)";
+  const balanceGradient = isDark
+    ? palette.gradients.segment
+    : [palette.primary, palette.primaryAlt];
   const actionCircle = isDark ? palette.surface : palette.primary;
+
+  const infoCardBg = isDark ? palette.surface : palette.background;
+  const infoCardBorder = palette.border;
+  const infoCardTitleColor = palette.text;
+  const infoCardBodyColor = palette.textMuted;
+
+  const marketTextColor = palette.text;
+  const upPillBg = palette.primary;
+  const downPillBg = "#DE2E42";
+
   const topGlow = isDark
-    ? palette.gradients.background
-    : ["rgba(61, 255, 220, 0.08)", "rgba(255, 255, 255, 0)"];
-  // const balanceCardHeight = Math.round((width - Spacing.xl * 2) * (190 / 390));
+    ? (["rgba(255,255,255,0.04)", "rgba(102,102,102,0)"] as const)
+    : (["rgba(61,255,220,0.06)", "rgba(255,255,255,0)"] as const);
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: palette.background }]}
     >
       <StatusBar style={isDark ? "light" : "dark"} />
+
+      {/* Top glow */}
       <View pointerEvents="none" style={styles.topGlow}>
         <LinearGradient
           colors={asGradient(topGlow)}
@@ -115,16 +135,19 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, contentPadding]}
       >
+        {/* ── Header ── */}
         <View style={styles.header}>
           <Pressable
             style={[styles.headerIcon, { borderColor: palette.border }]}
           >
             <ArrowLeft width={20} height={20} color={palette.textMuted} />
           </Pressable>
+
           <Text style={[styles.headerTitle, { color: palette.text }]}>
             Dashboard
           </Text>
-          <View style={styles.menuIcon}>
+
+          <Pressable style={styles.menuIcon}>
             <View
               style={[styles.menuLine, { backgroundColor: palette.textMuted }]}
             />
@@ -138,47 +161,57 @@ export default function DashboardScreen() {
             <View
               style={[styles.menuLine, { backgroundColor: palette.textMuted }]}
             />
-          </View>
+          </Pressable>
         </View>
 
+        {/* ── Balance Card ── */}
         <View
           style={[
             styles.balanceCard,
             {
-              borderColor: isDark ? palette.border : "rgba(255, 255, 255, 0.3)",
+              backgroundColor: cardBg,
+              borderColor: cardBorder,
             },
           ]}
         >
-          <ContentBox
-            style={{ position: "absolute" }}
-            width="118%"
-            height="159%"
-          />
-          <Text style={[styles.cardLabel, { color: cardMutedText }]}>
-            Total value (BTC)
-          </Text>
-          <Text style={[styles.cardValue, { color: cardTextColor }]}>
-            $2,385.60
-          </Text>
-          <View style={styles.cardRow}>
-            <Text style={[styles.cardSubText, { color: cardMutedText }]}>
-              = 0000000BTC
+          {/* <LinearGradient
+            colors={asGradient(balanceGradient)}
+            style={StyleSheet.absoluteFillObject}
+          /> */}
+          <ContentBox style={styles.cardPattern} width="120%" height="120%" />
+
+          {/* Card content */}
+          <View style={styles.cardContent}>
+            <Text style={[styles.cardLabel, { color: cardMutedText }]}>
+              Total value (BTC)
             </Text>
-            <View style={[styles.eyeIcon, { borderColor: cardMutedText }]} />
+            <Text style={[styles.cardValue, { color: cardTextColor }]}>
+              $2,385.60
+            </Text>
+            <View style={styles.cardSubRow}>
+              <Text style={[styles.cardSubText, { color: cardMutedText }]}>
+                = 0000000BTC
+              </Text>
+              <View style={[styles.eyeIcon, { borderColor: cardMutedText }]} />
+            </View>
           </View>
+
+          {/* Inset shadow overlay for dark */}
+          {isDark ? <View style={styles.cardInsetShadow} /> : null}
         </View>
 
+        {/* ── Quick Actions ── */}
         <View style={styles.actionsRow}>
           {ACTIONS.map((action) => {
             const Icon = isDark ? action.dark : action.light;
             return (
-              <View key={action.key} style={styles.actionItem}>
+              <Pressable key={action.key} style={styles.actionItem}>
                 <View
                   style={[
                     styles.actionCircle,
                     {
                       backgroundColor: actionCircle,
-                      borderColor: palette.border,
+                      borderColor: isDark ? palette.border : palette.primaryAlt,
                     },
                   ]}
                 >
@@ -187,72 +220,96 @@ export default function DashboardScreen() {
                 <Text style={[styles.actionLabel, { color: palette.text }]}>
                   {action.label}
                 </Text>
-              </View>
+              </Pressable>
             );
           })}
         </View>
 
+        {/* ── Explore the Market ── */}
         <Text style={[styles.sectionTitle, { color: palette.text }]}>
           Explore the market
         </Text>
         <View style={styles.infoRow}>
+          {/* KYC card */}
           <View
             style={[
               styles.infoCard,
               {
-                borderColor: palette.border,
-                backgroundColor: isDark ? undefined : palette.background,
+                backgroundColor: infoCardBg,
+                borderColor: infoCardBorder,
               },
             ]}
           >
-            <LinearGradient
-              colors={asGradient(palette.gradients.input)}
-              style={StyleSheet.absoluteFillObject}
-            />
-            <Text style={[styles.infoTitle, { color: palette.text }]}>
-              KYC Verification
-            </Text>
-            <View style={{ flexDirection: "row" }}>
-              <Text style={[styles.infoBody, { color: palette.textMuted }]}>
+            {isDark ? (
+              <LinearGradient
+                colors={asGradient(palette.gradients.input)}
+                style={StyleSheet.absoluteFillObject}
+              />
+            ) : null}
+            <View style={styles.infoCardTextBlock}>
+              <Text style={[styles.infoTitle, { color: infoCardTitleColor }]}>
+                KYC Verification
+              </Text>
+              <Text style={[styles.infoBody, { color: infoCardBodyColor }]}>
                 Integrated third-party API ensures fast, compliant onboarding.
               </Text>
-              <KycIcon width={40} height={40} style={styles.infoIcon} />
             </View>
+            <KycIcon
+              width={32}
+              height={32}
+              style={styles.infoIconAbsolute}
+            />
           </View>
+
+          {/* Fiat card */}
           <View
             style={[
               styles.infoCard,
               {
-                borderColor: palette.border,
-                backgroundColor: isDark ? undefined : palette.background,
+                backgroundColor: infoCardBg,
+                borderColor: infoCardBorder,
               },
             ]}
           >
-            <LinearGradient
-              colors={asGradient(palette.gradients.input)}
-              style={StyleSheet.absoluteFillObject}
+            {isDark ? (
+              <LinearGradient
+                colors={asGradient(palette.gradients.input)}
+                style={StyleSheet.absoluteFillObject}
+              />
+            ) : null}
+            <View style={styles.infoCardTextBlock}>
+              <Text style={[styles.infoTitle, { color: infoCardTitleColor }]}>
+                Easy Fiat Deposits
+              </Text>
+              <Text style={[styles.infoBody, { color: infoCardBodyColor }]}>
+                Deposit USD, EUR, and GBP securely through bank-wire API
+                integration.
+              </Text>
+            </View>
+            <FiatDepositsIcon
+              width={32}
+              height={32}
+              style={styles.infoIconAbsolute}
             />
-            <Text style={[styles.infoTitle, { color: palette.text }]}>
-              Easy Fiat Deposits
-            </Text>
-            <Text style={[styles.infoBody, { color: palette.textMuted }]}>
-              Deposit USD, EUR, and GBP securely through bank-wire API
-              integration.
-            </Text>
-            <FiatDepositsIcon width={50} height={50} style={styles.infoIcon} />
           </View>
         </View>
 
+        {/* ── Market Trends ── */}
         <Text style={[styles.sectionTitle, { color: palette.text }]}>
           Market Trends
         </Text>
+
+        {/* Filter tabs */}
         <View style={styles.filterRow}>
           {FILTER_TABS.map((tab, index) => (
             <View key={tab} style={styles.filterTab}>
               <Text
                 style={[
                   styles.filterText,
-                  { color: index === 0 ? palette.accent : palette.textMuted },
+                  {
+                    color: index === 0 ? palette.accent : palette.textMuted,
+                    fontWeight: index === 0 ? "700" : "400",
+                  },
                 ]}
               >
                 {tab}
@@ -269,47 +326,78 @@ export default function DashboardScreen() {
           ))}
         </View>
 
+        {/* Divider */}
+        <View
+          style={[
+            styles.dividerWrapper,
+            { backgroundColor: palette.border },
+          ]}
+        />
+
+        {/* Table header */}
         <View style={styles.marketHeaderRow}>
           <Text style={[styles.marketHeaderText, { color: palette.textMuted }]}>
             Name
           </Text>
-          <Text style={[styles.marketHeaderText, { color: palette.textMuted }]}>
+          <Text
+            style={[
+              styles.marketHeaderText,
+              styles.marketHeaderCenter,
+              { color: palette.textMuted },
+            ]}
+          >
             Last Price
           </Text>
-          <Text style={[styles.marketHeaderText, { color: palette.textMuted }]}>
+          <Text
+            style={[
+              styles.marketHeaderText,
+              styles.marketHeaderRight,
+              { color: palette.textMuted },
+            ]}
+          >
             24h chg%
           </Text>
         </View>
 
+        {/* Market rows */}
         {MARKET_ROWS.map((row) => (
           <View key={row.key} style={styles.marketRow}>
+            {/* Left: pair + volume */}
             <View style={styles.marketLeft}>
-              <Text style={[styles.marketPair, { color: palette.text }]}>
-                {row.pair}
+              <Text style={[styles.marketPairText, { color: marketTextColor }]}>
+                <Text style={styles.marketPairBase}>{row.base}</Text>
+                <Text style={[styles.marketPairSlash, { color: palette.textMuted }]}>
+                  /
+                </Text>
+                <Text style={[styles.marketPairQuote, { color: palette.textMuted }]}>
+                  {row.quote}
+                </Text>
               </Text>
               <Text style={[styles.marketVolume, { color: palette.textMuted }]}>
                 {row.volume}
               </Text>
             </View>
+
+            {/* Middle: price */}
             <View style={styles.marketMiddle}>
-              <Text style={[styles.marketPrice, { color: palette.text }]}>
+              <Text style={[styles.marketPrice, { color: marketTextColor }]}>
                 {row.price}
               </Text>
               <Text
                 style={[styles.marketSubPrice, { color: palette.textMuted }]}
               >
-                ${row.price}
+                {row.subPrice}
               </Text>
             </View>
+
+            {/* Right: change pill */}
             <View
               style={[
                 styles.changePill,
-                { backgroundColor: row.up ? palette.primary : palette.alert },
+                { backgroundColor: row.up ? upPillBg : downPillBg },
               ]}
             >
-              <Text style={[styles.changeText, { color: palette.onPrimary }]}>
-                {row.change}
-              </Text>
+              <Text style={styles.changeText}>{row.change}</Text>
             </View>
           </View>
         ))}
@@ -332,6 +420,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.xl,
   },
+
+  // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -347,8 +437,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerTitle: {
-    fontSize: Typography.size.xl,
-    fontWeight: Typography.weight.bold,
+    fontSize: Typography.size.lg,
+    fontWeight: "600",
   },
   menuIcon: {
     width: 34,
@@ -365,26 +455,34 @@ const styles = StyleSheet.create({
   menuLineWide: {
     width: 26,
   },
+
+  // Balance card
   balanceCard: {
     borderRadius: Radii.xl,
-    padding: Spacing.xl,
     borderWidth: 1,
     marginBottom: Spacing.xl,
     overflow: "hidden",
+    minHeight: 160,
   },
-  balanceCardBg: {
-    // position: 'absolute',
+  cardPattern: {
+    position: "absolute",
+    right: -22,
+    top: -18,
+  },
+  cardContent: {
+    padding: Spacing.xl,
+    gap: Spacing.md,
   },
   cardLabel: {
     fontSize: Typography.size.sm,
-    marginBottom: Spacing.sm,
+    fontWeight: "400",
   },
   cardValue: {
-    fontSize: Typography.size.xxxl,
-    fontWeight: Typography.weight.bold,
-    marginBottom: Spacing.sm,
+    fontSize: 32,
+    fontWeight: "600",
+    lineHeight: 48,
   },
-  cardRow: {
+  cardSubRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
@@ -393,11 +491,21 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.sm,
   },
   eyeIcon: {
-    width: 18,
+    width: 16,
     height: 10,
     borderWidth: 1,
     borderRadius: Radii.pill,
   },
+  cardInsetShadow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: Radii.xl,
+    shadowColor: "#070C09",
+    shadowOffset: { width: -8, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+  },
+
+  // Actions
   actionsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -405,53 +513,64 @@ const styles = StyleSheet.create({
   },
   actionItem: {
     alignItems: "center",
-    width: 72,
+    gap: Spacing.sm,
+    flex: 1,
   },
   actionCircle: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: Spacing.sm,
     borderWidth: 0.7,
   },
   actionLabel: {
     fontSize: Typography.size.sm,
-    fontWeight: Typography.weight.medium,
+    fontWeight: "500",
+    textAlign: "center",
   },
+
+  // Explore the market
   sectionTitle: {
     fontSize: Typography.size.lg,
-    fontWeight: Typography.weight.bold,
+    fontWeight: "700",
     marginBottom: Spacing.md,
   },
   infoRow: {
     flexDirection: "row",
-    gap: Spacing.xs,
+    gap: Spacing.sm,
     marginBottom: Spacing.xl,
   },
   infoCard: {
     flex: 1,
     borderRadius: Radii.lg,
-    padding: Spacing.md,
-    // minHeight: 130,
-    borderWidth: 1,
+    borderWidth: 0.8,
+    padding: 10,
     overflow: "hidden",
+    minHeight: 100,
+  },
+  infoCardTextBlock: {
+    gap: Spacing.sm,
+    paddingRight: 36,
   },
   infoTitle: {
-    fontSize: Typography.size.xs,
-    fontWeight: Typography.weight.bold,
-    marginBottom: Spacing.sm,
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 0.24,
+    lineHeight: 18,
   },
   infoBody: {
-    fontSize: Typography.size.xs,
-    lineHeight: Typography.line.xs,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 0.18,
   },
-  infoIcon: {
-    // position: 'absolute',
-    right: Spacing.md,
-    bottom: Spacing.md,
+  infoIconAbsolute: {
+    position: "absolute",
+    bottom: 14,
+    right: 14,
   },
+
+  // Market Trends
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -470,13 +589,26 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     marginTop: Spacing.xs,
   },
+  dividerWrapper: {
+    height: 1,
+    marginBottom: Spacing.md,
+  },
   marketHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: Spacing.md,
   },
   marketHeaderText: {
     fontSize: Typography.size.xs,
+    flex: 1,
+  },
+  marketHeaderCenter: {
+    textAlign: "right",
+  },
+  marketHeaderRight: {
+    textAlign: "right",
+    maxWidth: 80,
   },
   marketRow: {
     flexDirection: "row",
@@ -486,37 +618,55 @@ const styles = StyleSheet.create({
   },
   marketLeft: {
     flex: 1,
+    gap: 6,
+  },
+  marketPairText: {
+    fontSize: 0, // parent zero; children set sizes
+  },
+  marketPairBase: {
+    fontSize: Typography.size.md,
+    fontWeight: "600",
+    lineHeight: 16,
+  },
+  marketPairSlash: {
+    fontSize: Typography.size.md,
+    lineHeight: 16,
+  },
+  marketPairQuote: {
+    fontSize: Typography.size.sm,
+    fontWeight: "300",
+    lineHeight: 16,
+  },
+  marketVolume: {
+    fontSize: Typography.size.xs,
   },
   marketMiddle: {
     flex: 1,
     alignItems: "flex-end",
     paddingRight: Spacing.md,
-  },
-  marketPair: {
-    fontSize: Typography.size.md,
-    fontWeight: Typography.weight.bold,
-  },
-  marketVolume: {
-    fontSize: Typography.size.xs,
-    marginTop: Spacing.xs,
+    gap: 6,
   },
   marketPrice: {
     fontSize: Typography.size.md,
-    fontWeight: Typography.weight.bold,
+    fontWeight: "600",
+    lineHeight: 16,
   },
   marketSubPrice: {
     fontSize: Typography.size.xs,
-    marginTop: Spacing.xs,
+    lineHeight: 18,
   },
   changePill: {
-    borderRadius: Radii.pill,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    minWidth: 66,
+    borderRadius: Radii.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    width: 80,
     alignItems: "center",
   },
   changeText: {
-    fontSize: Typography.size.xs,
-    fontWeight: Typography.weight.bold,
+    color: "#FFFFFF",
+    fontSize: Typography.size.sm,
+    fontWeight: "400",
+    lineHeight: 20,
+    textAlign: "right",
   },
 });
