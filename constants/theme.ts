@@ -30,24 +30,71 @@ export const Colors = {
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
+    sans: 'Geist-Regular',
     /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
+    serif: 'Geist-Regular',
     /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
+    rounded: 'Geist-Regular',
     /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
+    mono: 'Geist-Regular',
   },
   default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
+    sans: 'Geist-Regular',
+    serif: 'Geist-Regular',
+    rounded: 'Geist-Regular',
+    mono: 'Geist-Regular',
   },
   web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    sans: "'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    serif: "'Geist', Georgia, 'Times New Roman', serif",
+    rounded: "'Geist', 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
+    mono: "'Geist', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
+
+export const AppColors = {
+  dark: {
+    background: '#020B09',
+    backgroundAlt: '#000505',
+    surface: '#021210',
+    surfaceMuted: '#0065531A',
+    border: '#275049',
+    text: '#FFFFFF',
+    textMuted: '#75817C',
+    primary: '#006553',
+    primaryAlt: '#026D58',
+    onPrimary: '#FFFFFF',
+    accent: '#3DFFDC',
+    alert: '#3DFFDC',
+    checkbox: '#0065531A',
+    transparent: 'transparent',
+    gradients: {
+      background: ['rgba(255, 255, 255, 0.04)', 'rgba(102, 102, 102, 0)'],
+      segment: ['#001D18', '#025A4A', '#001D18'],
+      button: ['#00120F', '#025A4A', '#00120F'],
+      input: ['rgba(255, 255, 255, 0.077)', 'rgba(255, 255, 255, 0.033)'],
+    },
+  },
+  light: {
+    background: '#FFFFFF',
+    backgroundAlt: '#FFFFFF',
+    surface: '#EFEFEF',
+    surfaceMuted: '#D6D6D6',
+    border: '#D6D6D6',
+    text: '#021210',
+    textMuted: '#75817C',
+    primary: '#006553',
+    primaryAlt: '#026D58',
+    onPrimary: '#FFFFFF',
+    accent: '#006553',
+    alert: '#026D58',
+    checkbox: '#0065531A',
+    transparent: 'transparent',
+    gradients: {
+      background: ['rgba(255, 255, 255, 0.232)', 'rgba(244, 244, 244, 0.128)', 'rgba(255, 255, 255, 0.128)'],
+      segment: ['rgba(255, 255, 255, 0.232)', 'rgba(244, 244, 244, 0.128)', 'rgba(255, 255, 255, 0.128)'],
+      button: ['#00120F', '#025A4A', '#00120F'],
+      input: ['rgba(255, 255, 255, 0.232)', 'rgba(244, 244, 244, 0.128)'],
+    },
+  },
+} as const;
