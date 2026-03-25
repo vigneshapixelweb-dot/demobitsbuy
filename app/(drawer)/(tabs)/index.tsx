@@ -1,7 +1,8 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,11 +17,16 @@ import {
 import ArrowLeft from "@/assets/icons/arrow-left.svg";
 import BuyDark from "@/assets/icons/Dashboard/Buy_dark.svg";
 import BuyLight from "@/assets/icons/Dashboard/Buy_light.svg";
-import ContentBox from "@/assets/icons/Dashboard/Content Box -full (1).svg";
+import BalanceHideDark from "@/assets/icons/Dashboard/balance details hide_dark.svg";
+import BalanceHideLight from "@/assets/icons/Dashboard/balance details hide_light.svg";
+import ContentBoxDark from "@/assets/icons/Dashboard/Content Box_dark.svg";
+import ContentBoxLight from "@/assets/icons/Dashboard/Content Box_light.svg";
 import DepositDark from "@/assets/icons/Dashboard/deposit_dark.svg";
 import DepositLight from "@/assets/icons/Dashboard/deposite_light.svg";
-import FiatDepositsIcon from "@/assets/icons/Dashboard/Fiat_deposits.svg";
-import KycIcon from "@/assets/icons/Dashboard/kyc_verification.svg";
+import FiatDepositsDark from "@/assets/icons/Dashboard/fiatdeposite_dark.svg";
+import FiatDepositsLight from "@/assets/icons/Dashboard/fiatdeposite_light.svg";
+import KycDark from "@/assets/icons/Dashboard/kycverfication_dark.svg";
+import KycLight from "@/assets/icons/Dashboard/kycverfication_light.svg";
 import SellDark from "@/assets/icons/Dashboard/Sell_dark.svg";
 import SellLight from "@/assets/icons/Dashboard/Sell_light.svg";
 import WithdrawDark from "@/assets/icons/Dashboard/withdraw_dark.svg";
@@ -77,6 +83,7 @@ const MARKET_ROWS = [
 ];
 
 const FILTER_TABS = ["All", "Favorites", "Spot", "Gainers", "Losers"];
+const INDICATOR_MIN_WIDTH = 8;
 
 const asGradient = (colors: readonly string[]) =>
   colors as [string, string, ...string[]];
@@ -86,6 +93,10 @@ export default function DashboardScreen() {
   const colorScheme = useColorScheme() ?? "dark";
   const palette = AppColors[colorScheme];
   const isDark = colorScheme === "dark";
+  const [selectedFilter, setSelectedFilter] = useState(0);
+  const tabLayouts = useRef<{ x: number; width: number }[]>([]);
+  const indicatorX = useRef(new Animated.Value(0)).current;
+  const indicatorW = useRef(new Animated.Value(0)).current;
 
   const contentPadding = useMemo(
     () => ({
@@ -99,10 +110,12 @@ export default function DashboardScreen() {
   const cardBorder = isDark ? palette.border : "transparent";
   const cardTextColor = isDark ? palette.text : palette.onPrimary;
   const cardMutedText = isDark ? palette.textMuted : "rgba(255,255,255,0.75)";
-  const balanceGradient = isDark
-    ? palette.gradients.segment
-    : [palette.primary, palette.primaryAlt];
+ 
   const actionCircle = isDark ? palette.surface : palette.primary;
+  const KycIcon = isDark ? KycDark : KycLight;
+  const FiatDepositsIcon = isDark ? FiatDepositsDark : FiatDepositsLight;
+  const BalanceHideIcon = isDark ? BalanceHideDark : BalanceHideLight;
+  const ContentBox = isDark ? ContentBoxDark : ContentBoxLight;
 
   const infoCardBg = isDark ? palette.surface : palette.background;
   const infoCardBorder = palette.border;
@@ -116,6 +129,18 @@ export default function DashboardScreen() {
   const topGlow = isDark
     ? (["rgba(255,255,255,0.04)", "rgba(102,102,102,0)"] as const)
     : (["rgba(61,255,220,0.06)", "rgba(255,255,255,0)"] as const);
+
+  useEffect(() => {
+    const layout = tabLayouts.current[selectedFilter];
+    if (!layout) return;
+    indicatorX.setValue(layout.x);
+    indicatorW.setValue(INDICATOR_MIN_WIDTH);
+    Animated.timing(indicatorW, {
+      toValue: layout.width,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [selectedFilter, indicatorW, indicatorX]);
 
   return (
     <SafeAreaView
@@ -174,10 +199,7 @@ export default function DashboardScreen() {
             },
           ]}
         >
-          {/* <LinearGradient
-            colors={asGradient(balanceGradient)}
-            style={StyleSheet.absoluteFillObject}
-          /> */}
+          
           <ContentBox style={styles.cardPattern} width="120%" height="120%" />
 
           {/* Card content */}
@@ -192,7 +214,7 @@ export default function DashboardScreen() {
               <Text style={[styles.cardSubText, { color: cardMutedText }]}>
                 = 0000000BTC
               </Text>
-              <View style={[styles.eyeIcon, { borderColor: cardMutedText }]} />
+              <BalanceHideIcon width={16} height={12} />
             </View>
           </View>
 
@@ -302,28 +324,42 @@ export default function DashboardScreen() {
         {/* Filter tabs */}
         <View style={styles.filterRow}>
           {FILTER_TABS.map((tab, index) => (
-            <View key={tab} style={styles.filterTab}>
+            <Pressable
+              key={tab}
+              style={styles.filterTab}
+              onPress={() => setSelectedFilter(index)}
+              onLayout={(event) => {
+                const { x, width } = event.nativeEvent.layout;
+                tabLayouts.current[index] = { x, width };
+                if (index === selectedFilter) {
+                  indicatorX.setValue(x);
+                  indicatorW.setValue(width);
+                }
+              }}
+            >
               <Text
                 style={[
                   styles.filterText,
                   {
-                    color: index === 0 ? palette.accent : palette.textMuted,
-                    fontWeight: index === 0 ? "700" : "400",
+                    color: palette.text,
+                    fontWeight: index === selectedFilter ? "700" : "400",
                   },
                 ]}
               >
                 {tab}
               </Text>
-              {index === 0 ? (
-                <View
-                  style={[
-                    styles.filterIndicator,
-                    { backgroundColor: palette.accent },
-                  ]}
-                />
-              ) : null}
-            </View>
+            </Pressable>
           ))}
+          <Animated.View
+            style={[
+              styles.filterIndicatorAnimated,
+              {
+                backgroundColor: palette.accent,
+                transform: [{ translateX: indicatorX }],
+                width: indicatorW,
+              },
+            ]}
+          />
         </View>
 
         {/* Divider */}
@@ -554,7 +590,7 @@ const styles = StyleSheet.create({
     paddingRight: 36,
   },
   infoTitle: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "600",
     letterSpacing: 0.24,
     lineHeight: 18,
@@ -576,6 +612,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: Spacing.lg,
     marginBottom: Spacing.md,
+    position: "relative",
+    paddingBottom: Spacing.xs,
   },
   filterTab: {
     alignItems: "flex-start",
@@ -583,11 +621,12 @@ const styles = StyleSheet.create({
   filterText: {
     fontSize: Typography.size.sm,
   },
-  filterIndicator: {
-    width: 26,
+  filterIndicatorAnimated: {
+    position: "absolute",
+    left: 0,
+    bottom: 0,
     height: 2,
     borderRadius: Radii.pill,
-    marginTop: Spacing.xs,
   },
   dividerWrapper: {
     height: 1,

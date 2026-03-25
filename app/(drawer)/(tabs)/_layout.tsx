@@ -1,5 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
 
 import { HapticTab } from '@/components/haptic-tab';
 import HistoryIcon from '@/assets/icons/Tabicons/history.svg';
@@ -16,10 +18,18 @@ export default function TabLayout() {
         tabBarInactiveTintColor: '#75817C',
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarBackground: () => (
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 30 : 20}
+            tint="dark"
+            style={{ flex: 1 }}
+          />
+        ),
         tabBarStyle: {
-          backgroundColor: '#000505',
+          backgroundColor: 'transparent',
           borderTopLeftRadius: 28,
           borderTopRightRadius: 28,
+          overflow: 'hidden',
           height: 74,
           paddingTop: 10,
           paddingBottom: 12,
@@ -27,7 +37,7 @@ export default function TabLayout() {
           position: 'absolute',
           left: 12,
           right: 12,
-          bottom: 12,
+          // bottom: 12,
         },
         tabBarLabelStyle: {
           fontSize: 12,

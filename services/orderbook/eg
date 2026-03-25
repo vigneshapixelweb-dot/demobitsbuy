@@ -1,0 +1,23 @@
+
+import OrderBook from '@/src/orderbook/OrderBook';
+import { useOrderbookBybit } from '@/src/orderbook/useOrderbookBybit';
+
+ const { bids, asks } = useOrderbookBybit(bybitSymbol ?? 'BTCUSDT');
+
+
+
+<OrderBook
+              bids={bids}
+              asks={asks}
+              rows={12}
+              cumulative={false}
+              precision={{ price: 2, qty: 4 }}
+              onSelect={(side, level) => {
+                console.log('Selected', side, level);
+              }}
+              theme={{
+                bg: '#0b0f16', text: '#d1d4dc', divider: '#1f2940',
+                bidText: '#26a69a', askText: '#ef5350',
+                bidBar: 'rgba(38,166,154,0.25)', askBar: 'rgba(239,83,80,0.25)',
+              }}
+            />
