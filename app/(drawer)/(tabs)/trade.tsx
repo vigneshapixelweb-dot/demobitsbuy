@@ -13,50 +13,31 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { DrawerActions, useNavigation } from "@react-navigation/native";
 
 import { useOrderbookBybit } from "@/services/orderbook/useOrderbookBybit";
 import { CryptoPriceClient, PriceMap } from "@/services/coindetails/CryptoPriceClient";
 import { TradeSlider } from "@/components/trade-slider";
 import ArrowLeft from "@/assets/icons/arrow-left.svg";
+import DrawerIcon from "@/assets/icons/drawer.svg";
 import ChartIcon from "@/assets/icons/Trade/chart.svg";
 import CheckIcon from "@/assets/icons/check.svg";
 import { Radii } from "@/constants/radii";
 import { Spacing } from "@/constants/spacing";
+import {
+  TRADE_ACCENT_BUY,
+  TRADE_ACCENT_SELL,
+  TRADE_COIN_PAIRS,
+  TRADE_DEPTH_OPTIONS,
+  TRADE_OPEN_ORDERS,
+  TRADE_ORDER_TABS,
+  TRADE_STATS,
+  TRADE_TPSL_FIELDS,
+} from "@/constants/trade";
 import { AppColors } from "@/constants/theme";
 import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
-// ─── Static Data ────────────────────────────────────────────────────────────
-
-const COIN_PAIRS = [
-  { base: "BTC", quote: "USDT", change: "+1.88%" },
-  { base: "ETH", quote: "USDT", change: "+0.64%" },
-  { base: "SOL", quote: "USDT", change: "-2.14%" },
-  { base: "XRP", quote: "USDT", change: "+3.02%" },
-];
-
-const OPEN_ORDERS = [
-  {
-    pair: "BTC",
-    quote: "USDT",
-    type: "Limit / Buy",
-    date: "16-03-2026, 08:22:11",
-    amount: "0.00",
-    total: "28.17",
-    price: "1595.00",
-  },
-  {
-    pair: "BTC",
-    quote: "USDT",
-    type: "Limit / Buy",
-    date: "16-03-2026, 09:14:53",
-    amount: "0.00",
-    total: "28.17",
-    price: "1595.00",
-  },
-];
-
-const ORDER_TABS = ["Open Orders (2)", "My Order (0)", "My Trade (2)"];
 const asGradient = (c: readonly string[]) => c as [string, string, ...string[]];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -66,6 +47,7 @@ export default function TradeScreen() {
   const palette = AppColors[colorScheme];
   const isDark = colorScheme === "dark";
   const router = useRouter();
+  const navigation = useNavigation();
 
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [orderTab, setOrderTab] = useState(0);
@@ -73,7 +55,7 @@ export default function TradeScreen() {
   const [isPairSheetOpen, setIsPairSheetOpen] = useState(false);
   const [isDepthSheetOpen, setIsDepthSheetOpen] = useState(false);
   const [depthValue, setDepthValue] = useState("0.01");
-  const [selectedPair, setSelectedPair] = useState(COIN_PAIRS[0]);
+  const [selectedPair, setSelectedPair] = useState(TRADE_COIN_PAIRS[0]);
   const [tpLimit, setTpLimit] = useState("");
   const [slTrigger, setSlTrigger] = useState("");
   const [slLimit, setSlLimit] = useState("");
@@ -90,9 +72,9 @@ export default function TradeScreen() {
   const amountInputRef = useRef<TextInput>(null);
 
   const isBuy = activeTab === "buy";
-  const accentColor = isBuy ? "#00C28E" : "#DE2E42";
-  const accentBuy = "#00C28E";
-  const accentSell = "#DE2E42";
+  const accentColor = isBuy ? TRADE_ACCENT_BUY : TRADE_ACCENT_SELL;
+  const accentBuy = TRADE_ACCENT_BUY;
+  const accentSell = TRADE_ACCENT_SELL;
   const selectedSymbol = `${selectedPair.base}${selectedPair.quote}`;
   const selectedPrice = coinPrices[selectedSymbol];
   const parseNumeric = (value: string) => {
@@ -108,7 +90,6 @@ export default function TradeScreen() {
 
   // Theme aliases
   const bg = palette.background;
-  const surface = isDark ? palette.surface : "#F5F5F5";
   const cardBg = isDark ? palette.surface : palette.background;
   const border = palette.border;
   const textPrimary = palette.text;
@@ -127,7 +108,7 @@ export default function TradeScreen() {
   };
 
   useEffect(() => {
-    const symbols = COIN_PAIRS.map((p) => `${p.base}${p.quote}`);
+    const symbols = TRADE_COIN_PAIRS.map((p) => `${p.base}${p.quote}`);
     const client = new CryptoPriceClient(symbols);
     const off = client.onUpdate((prices) => setCoinPrices(prices));
     client.start().catch(() => {});
@@ -177,7 +158,7 @@ export default function TradeScreen() {
     onChange: (v: string) => void;
     placeholder?: string;
     unit?: string;
-    inputRef?: RefObject<TextInput>;
+    inputRef?: RefObject<TextInput | null>;
   }) => (
     <Pressable
       onPress={() => inputRef?.current?.focus()}
@@ -246,15 +227,11 @@ export default function TradeScreen() {
         </Pressable>
 
         {/* Hamburger */}
-        <Pressable style={styles.headerBtn}>
-          <View style={styles.hamburger}>
-            {[24, 18, 24].map((w, i) => (
-              <View
-                key={i}
-                style={[styles.hamburgerLine, { width: w, backgroundColor: textMuted }]}
-              />
-            ))}
-          </View>
+        <Pressable
+          style={styles.headerBtn}
+          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+        >
+          <DrawerIcon width={16} height={16} />
         </Pressable>
       </View>
 
@@ -517,11 +494,12 @@ export default function TradeScreen() {
             {/* TP/SL fields (visible when enabled) */}
             {tpslEnabled && (
               <>
-                {[
-                  { key: "tp", label: "TP Limit (USDT)", value: tpLimit, setValue: setTpLimit },
-                  { key: "slTrigger", label: "SL Trigger (USDT)", value: slTrigger, setValue: setSlTrigger },
-                  { key: "slLimit", label: "SL Limit", value: slLimit, setValue: setSlLimit },
-                ].map(({ key, label, value, setValue }) => (
+                {TRADE_TPSL_FIELDS.map(({ key, label }) => {
+                  const value =
+                    key === "tp" ? tpLimit : key === "slTrigger" ? slTrigger : slLimit;
+                  const setValue =
+                    key === "tp" ? setTpLimit : key === "slTrigger" ? setSlTrigger : setSlLimit;
+                  return (
                   <View
                     key={key}
                     style={[
@@ -559,17 +537,13 @@ export default function TradeScreen() {
                       <Text style={[styles.tpslStepText, { color: textPrimary }]}>+</Text>
                     </Pressable>
                   </View>
-                ))}
+                )})}
               </>
             )}
 
             {/* Stats block */}
             <View style={styles.statsBlock}>
-              {[
-                { label: "Avbl", value: "0 USDT", showAdd: true },
-                { label: "Max Buy", value: "0 BTC", showAdd: false },
-                { label: "Est. Fee", value: "0.000375 BTC", showAdd: false },
-              ].map(({ label, value, showAdd }) => (
+              {TRADE_STATS.map(({ label, value, showAdd }) => (
                 <View key={label} style={styles.statRow}>
                   <Text style={[styles.statLabel, { color: textMuted }]}>{label}</Text>
                   <View style={styles.statValueRow}>
@@ -604,7 +578,7 @@ export default function TradeScreen() {
         <View style={[styles.ordersSection, { borderTopColor: border }]}>
           {/* Tab row */}
           <View style={styles.orderTabRow}>
-            {ORDER_TABS.map((tab, i) => (
+            {TRADE_ORDER_TABS.map((tab, i) => (
               <Pressable
                 key={tab}
                 onPress={() => switchOrderTab(i)}
@@ -695,7 +669,7 @@ export default function TradeScreen() {
               />
             )}
 
-            {OPEN_ORDERS.map((order, i) => (
+            {TRADE_OPEN_ORDERS.map((order, i) => (
               <View key={i}>
                 {i > 0 && (
                   <View style={[styles.orderDivider, { backgroundColor: border }]} />
@@ -766,7 +740,7 @@ export default function TradeScreen() {
           <View style={[styles.sheetContainer, { backgroundColor: cardBg, borderColor: border }]}>
             <View style={styles.sheetHandle} />
             <Text style={[styles.sheetTitle, { color: textPrimary }]}>Select Pair</Text>
-            {COIN_PAIRS.map((pair) => {
+            {TRADE_COIN_PAIRS.map((pair) => {
               const symbol = `${pair.base}${pair.quote}`;
               const price = coinPrices[symbol];
               return (
@@ -814,7 +788,7 @@ export default function TradeScreen() {
           <View style={[styles.sheetContainer, { backgroundColor: cardBg, borderColor: border }]}>
             <View style={styles.sheetHandle} />
             <Text style={[styles.sheetTitle, { color: textPrimary }]}>Select Depth</Text>
-            {["0.001", "0.01", "0.1", "1.0"].map((v) => (
+            {TRADE_DEPTH_OPTIONS.map((v) => (
               <Pressable
                 key={v}
                 style={styles.sheetItem}
@@ -844,7 +818,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: Spacing.md,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -865,14 +839,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   headerCaret: { fontSize: 15 },
-  hamburger: {
-    gap: 4,
-    alignItems: "flex-end",
-  },
-  hamburgerLine: {
-    height: 2,
-    borderRadius: Radii.pill,
-  },
 
   // Pair Bar
   pairBar: {
@@ -1099,7 +1065,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
   },
-  totalPlaceholder: { fontSize: Typography.size.xs },
+  totalPlaceholder: { fontSize: Typography.size.xs,textAlign: "center" },
   totalValue: { fontSize: Typography.size.sm, fontWeight: "600" },
 
   // TP/SL

@@ -15,6 +15,7 @@ import {
 } from "react-native-safe-area-context";
 
 import ArrowLeft from "@/assets/icons/arrow-left.svg";
+import DrawerIcon from "@/assets/icons/drawer.svg";
 import BuyDark from "@/assets/icons/Dashboard/Buy_dark.svg";
 import BuyLight from "@/assets/icons/Dashboard/Buy_light.svg";
 import BalanceHideDark from "@/assets/icons/Dashboard/balance details hide_dark.svg";
@@ -173,19 +174,7 @@ export default function DashboardScreen() {
           </Text>
 
           <Pressable style={styles.menuIcon}>
-            <View
-              style={[styles.menuLine, { backgroundColor: palette.textMuted }]}
-            />
-            <View
-              style={[
-                styles.menuLine,
-                styles.menuLineWide,
-                { backgroundColor: palette.textMuted },
-              ]}
-            />
-            <View
-              style={[styles.menuLine, { backgroundColor: palette.textMuted }]}
-            />
+            <DrawerIcon width={16} height={16} />
           </Pressable>
         </View>
 
@@ -481,15 +470,6 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: "flex-end",
     justifyContent: "center",
-    gap: 4,
-  },
-  menuLine: {
-    width: 20,
-    height: 2,
-    borderRadius: Radii.pill,
-  },
-  menuLineWide: {
-    width: 26,
   },
 
   // Balance card
