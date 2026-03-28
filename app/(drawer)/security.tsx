@@ -1,19 +1,25 @@
+import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { DrawerActions, useNavigation } from "@react-navigation/native";
-import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    Alert,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import SecurityModals from "@/app/(drawer)/screens/security-modals";
 import ArrowLeft from "@/assets/icons/arrow-left.svg";
-import DrawerIcon from "@/assets/icons/drawer.svg";
 import AccountActivitiesIcon from "@/assets/icons/security/account-activities.svg";
 import AntiCodeIcon from "@/assets/icons/security/anticode.svg";
 import AuthenticatorAppDark from "@/assets/icons/security/authenticator app_dark.svg";
 import AuthenticatorAppLight from "@/assets/icons/security/authenticator app_light.svg";
-import CloseIcon from "@/assets/icons/security/close.svg";
 import DeleteAccountIcon from "@/assets/icons/security/delete_account.svg";
 import EmailIcon from "@/assets/icons/security/email.svg";
 import GoogleAuthIcon from "@/assets/icons/security/google_auth.svg";
@@ -27,6 +33,45 @@ import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
+const OTP_LENGTH = 6;
+const RESEND_SECONDS = 30;
+
+const buildPseudoQrMatrix = (seedText: string, size = 23) => {
+  const matrix = Array.from({ length: size }, () => Array.from({ length: size }, () => false));
+  const blocked = Array.from({ length: size }, () => Array.from({ length: size }, () => false));
+
+  const drawFinder = (startX: number, startY: number) => {
+    for (let y = 0; y < 7; y += 1) {
+      for (let x = 0; x < 7; x += 1) {
+        const px = startX + x;
+        const py = startY + y;
+        blocked[py][px] = true;
+        const outer = x === 0 || x === 6 || y === 0 || y === 6;
+        const center = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+        matrix[py][px] = outer || center;
+      }
+    }
+  };
+
+  drawFinder(0, 0);
+  drawFinder(size - 7, 0);
+  drawFinder(0, size - 7);
+
+  let seed = 0;
+  for (let i = 0; i < seedText.length; i += 1) {
+    seed = (seed * 31 + seedText.charCodeAt(i)) % 2147483647;
+  }
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (blocked[y][x]) continue;
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      matrix[y][x] = seed % 3 === 0;
+    }
+  }
+
+  return matrix;
+};
 
 const withAlpha = (color: string, alpha: number) => {
   if (!color.startsWith("#")) return color;
@@ -54,11 +99,18 @@ type SettingItem = {
 
 export default function SecurityScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const colorScheme = useColorScheme() ?? "dark";
   const isDark = colorScheme === "dark";
   const palette = AppColors[colorScheme];
   const [showProtectModal, setShowProtectModal] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [showLoginPasswordModal, setShowLoginPasswordModal] = useState(false);
+  const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
+  const [otpError, setOtpError] = useState("");
+  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+
+  const inputsRef = useRef<Array<TextInput | null>>([]);
 
   const pageBackground = isDark ? "#020B09" : "#FFFFFF";
   const textPrimary = isDark ? palette.onPrimary : palette.text;
@@ -71,9 +123,104 @@ export default function SecurityScreen() {
   const noteBorder = "#F3BA2F";
   const noteBg = isDark ? withAlpha("#F3BA2F", 0.12) : "#FFF8E6";
   const AuthenticatorAppIcon = isDark ? AuthenticatorAppDark : AuthenticatorAppLight;
+  const walletAddress = "4ff6re2484fs8eFD5fsS458s2wca";
+  const verificationEmail = "jakeperalta@gmail.com";
 
-  const onPressMenu = () => {
-    navigation.dispatch(DrawerActions.openDrawer());
+  const qrMatrix = useMemo(() => buildPseudoQrMatrix(walletAddress), [walletAddress]);
+
+  useEffect(() => {
+    if (!showOtpModal || secondsLeft === 0) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [showOtpModal, secondsLeft]);
+
+  const openOtpModal = () => {
+    setShowOtpModal(true);
+    setOtp(Array(OTP_LENGTH).fill(""));
+    setOtpError("");
+    setSecondsLeft(RESEND_SECONDS);
+  };
+
+  const focusInput = (index: number) => {
+    inputsRef.current[index]?.focus();
+  };
+
+  const handleOtpChange = (value: string, index: number) => {
+    if (otpError) setOtpError("");
+    if (!value) {
+      const next = [...otp];
+      next[index] = "";
+      setOtp(next);
+      return;
+    }
+
+    const cleaned = value.replace(/\D/g, "");
+    if (!cleaned) return;
+
+    const next = [...otp];
+    if (cleaned.length > 1) {
+      const chars = cleaned.split("");
+      for (let i = 0; i < OTP_LENGTH; i += 1) {
+        next[i] = chars[i] ?? "";
+      }
+      setOtp(next);
+      const focusIndex = Math.min(cleaned.length, OTP_LENGTH) - 1;
+      if (focusIndex >= 0) {
+        focusInput(focusIndex);
+      }
+      return;
+    }
+
+    next[index] = cleaned;
+    setOtp(next);
+    if (index < OTP_LENGTH - 1) {
+      focusInput(index + 1);
+    }
+  };
+
+  const handleOtpKeyPress = (key: string, index: number) => {
+    if (key !== "Backspace") return;
+    if (otp[index]) {
+      const next = [...otp];
+      next[index] = "";
+      setOtp(next);
+      return;
+    }
+    if (index > 0) {
+      focusInput(index - 1);
+      const next = [...otp];
+      next[index - 1] = "";
+      setOtp(next);
+    }
+  };
+
+  const handleOtpSubmit = () => {
+    const code = otp.join("");
+    if (code.length !== OTP_LENGTH) {
+      setOtpError("Please enter the 6-digit code.");
+      return;
+    }
+    setOtpError("");
+    Alert.alert("OTP Submitted", "Verification submitted.");
+  };
+
+  const handleOtpResend = () => {
+    if (secondsLeft !== 0) return;
+    setSecondsLeft(RESEND_SECONDS);
+    Alert.alert("OTP Sent", "A new code has been sent.");
+  };
+
+  const resendLabel = secondsLeft === 0 ? "Send Code" : `Send Code (${secondsLeft}s)`;
+
+  const onCopyWallet = async () => {
+    try {
+      await Clipboard.setStringAsync(walletAddress);
+      Alert.alert("Copied", "Wallet address copied.");
+    } catch {
+      Alert.alert("Unable to copy", "Please try again.");
+    }
   };
 
   const settings2FA: SettingItem[] = [
@@ -84,7 +231,7 @@ export default function SecurityScreen() {
       buttonLabel: "Set Up",
       buttonTone: "primary",
       Icon: GoogleAuthIcon,
-      onPress: () => Alert.alert("Google Authenticator", "Setup flow coming soon."),
+      onPress: openOtpModal,
     },
     {
       id: "email-verification",
@@ -93,7 +240,7 @@ export default function SecurityScreen() {
       buttonLabel: "Change",
       buttonTone: "primary",
       Icon: EmailIcon,
-      onPress: () => Alert.alert("Email Verification", "Update your email verification settings."),
+      onPress: () => setShowVerificationModal(true),
     },
   ];
 
@@ -105,7 +252,7 @@ export default function SecurityScreen() {
       buttonLabel: "View",
       buttonTone: "primary",
       Icon: KycIcon,
-      onPress: () => router.push("/(drawer)/kyc-verification"),
+      onPress: () => router.push("/(drawer)/verifyaccount"),
     },
   ];
 
@@ -126,7 +273,7 @@ export default function SecurityScreen() {
       buttonLabel: "Change",
       buttonTone: "primary",
       Icon: LoginPasswordIcon,
-      onPress: () => Alert.alert("Login Password", "Password change flow coming soon."),
+      onPress: () => setShowLoginPasswordModal(true),
     },
   ];
 
@@ -138,7 +285,7 @@ export default function SecurityScreen() {
       buttonLabel: "View",
       buttonTone: "primary",
       Icon: AccountActivitiesIcon,
-      onPress: () => Alert.alert("Account Activity", "Activity log coming soon."),
+      onPress: () => router.push("/(drawer)/account-activity"),
     },
     {
       id: "delete-account",
@@ -200,9 +347,7 @@ export default function SecurityScreen() {
             <ArrowLeft width={24} height={24} color={textMuted} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: textPrimary }]}>Security</Text>
-          <Pressable style={styles.iconButton} onPress={onPressMenu}>
-            <DrawerIcon width={20} height={20} />
-          </Pressable>
+          <View style={styles.headerSpacer} />
         </View>
 
         <Pressable
@@ -243,47 +388,39 @@ export default function SecurityScreen() {
         <View style={styles.sectionList}>{deviceSettings.map(renderSetting)}</View>
       </ScrollView>
 
-      <Modal
-        visible={showProtectModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowProtectModal(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowProtectModal(false)} />
-          <View style={[styles.modalCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textPrimary }]}>Protect your Funds</Text>
-              <Pressable style={styles.modalClose} onPress={() => setShowProtectModal(false)}>
-                <CloseIcon width={22} height={22} />
-              </Pressable>
-            </View>
-            <View style={styles.modalDivider} />
-            <Text style={[styles.modalText, { color: textMuted }]}>
-              Your account security level is low. Please enable at least one more verification mode.
-            </Text>
-            <Pressable
-              style={[styles.modalOption, { borderColor: fieldBorder }]}
-              onPress={() => Alert.alert("Authenticator App", "Open authenticator setup.")}
-            >
-              <View style={styles.modalOptionLeft}>
-                <AuthenticatorAppIcon width={36} height={36} />
-                <View>
-                  <Text style={[styles.modalOptionTitle, { color: textPrimary }]}>
-                    Authenticator App
-                  </Text>
-                  <Text style={[styles.modalOptionSub, { color: textMuted }]}>
-                    (Recommended)
-                  </Text>
-                </View>
-              </View>
-              <View style={[styles.modalOptionArrow, { backgroundColor: fieldBorder }]}>
-                <Ionicons name="chevron-forward" size={16} color={textPrimary} />
-              </View>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      <SecurityModals
+        showOtpModal={showOtpModal}
+        showProtectModal={showProtectModal}
+        showVerificationModal={showVerificationModal}
+        showLoginPasswordModal={showLoginPasswordModal}
+        setShowOtpModal={setShowOtpModal}
+        setShowProtectModal={setShowProtectModal}
+        setShowVerificationModal={setShowVerificationModal}
+        setShowLoginPasswordModal={setShowLoginPasswordModal}
+        fieldBg={fieldBg}
+        fieldBorder={fieldBorder}
+        textPrimary={textPrimary}
+        textMuted={textMuted}
+        noteBorder={noteBorder}
+        noteBg={noteBg}
+        palette={palette}
+        qrMatrix={qrMatrix}
+        walletAddress={walletAddress}
+        verificationEmail={verificationEmail}
+        onCopyWallet={onCopyWallet}
+        otp={otp}
+        handleOtpChange={handleOtpChange}
+        handleOtpKeyPress={handleOtpKeyPress}
+        inputsRef={inputsRef}
+        otpError={otpError}
+        resendLabel={resendLabel}
+        secondsLeft={secondsLeft}
+        handleOtpResend={handleOtpResend}
+        handleOtpSubmit={handleOtpSubmit}
+        openOtpModal={openOtpModal}
+        AuthenticatorAppIcon={AuthenticatorAppIcon}
+        styles={styles}
+      />
     </SafeAreaView>
   );
 }
@@ -321,6 +458,10 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.xl,
     lineHeight: Typography.line.lg,
   },
+  headerSpacer: {
+    width: 34,
+    height: 28,
+  },
   alertCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -335,14 +476,14 @@ const styles = StyleSheet.create({
   },
   alertTitle: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.md,
+    fontSize: Typography.size.md -1,
     lineHeight: Typography.line.md,
     marginBottom: 2,
   },
   alertSubtitle: {
     fontFamily: "Geist-Regular",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
   },
   noteCard: {
     padding: Spacing.md,
@@ -352,14 +493,14 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.sm - 1,
+    lineHeight: Typography.line.sm -1,
     marginBottom: Spacing.xs,
   },
-  noteText: {
+  noteText: { 
     fontFamily: "Geist-Regular",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
   },
   sectionTitle: {
     fontFamily: "Geist-SemiBold",
@@ -395,33 +536,39 @@ const styles = StyleSheet.create({
   },
   settingTitle: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.md,
-    lineHeight: Typography.line.md,
+    fontSize: Typography.size.md -1,
+    lineHeight: Typography.line.md -2,
   },
   settingDescription: {
     fontFamily: "Geist-Regular",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
   },
   actionButton: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs + 4,
-    borderRadius: Radii.md,
+    borderRadius: Radii.sm,
     alignItems: "center",
     justifyContent: "center",
     minWidth: 74,
   },
   actionButtonText: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
   },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
+    justifyContent: "center",
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: Spacing.xl,
+  },
+  centeredModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.lg,
   },
   modalCard: {
     borderRadius: Radii.xl,
@@ -435,8 +582,8 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.lg,
-    lineHeight: Typography.line.lg,
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.md,
   },
   modalClose: {
     width: 32,
@@ -453,8 +600,8 @@ const styles = StyleSheet.create({
   },
   modalText: {
     fontFamily: "Geist-Regular",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
     marginBottom: Spacing.md,
   },
   modalOption: {
@@ -486,5 +633,231 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     alignItems: "center",
     justifyContent: "center",
+  },
+  otpCard: {
+    borderRadius: Radii.xl,
+    borderWidth: 1,
+    padding: Spacing.md,
+    maxHeight: "88%",
+  },
+  otpCardScroll: {
+    gap: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  verificationCardScroll: {
+    paddingBottom: Spacing.xs,
+  },
+  qrCard: {
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+  },
+  qrFrame: {
+    alignSelf: "center",
+    backgroundColor: "#FFFFFF",
+    padding: 8,
+    borderRadius: Radii.lg,
+    marginBottom: Spacing.md,
+  },
+  qrRow: {
+    flexDirection: "row",
+  },
+  qrCell: {
+    width: 5,
+    height: 5,
+  },
+  walletTitle: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+    marginBottom: Spacing.xs,
+  },
+  walletField: {
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.sm,
+  },
+  walletValue: {
+    flex: 1,
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+    marginRight: Spacing.sm,
+  },
+  walletNote: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
+  },
+  otpRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  otpInput: {
+    width: 38,
+    height: 46,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+  },
+  errorText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+    marginBottom: Spacing.sm,
+  },
+  resendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  resendText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
+  },
+  resendLink: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+  },
+  verificationText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+  },
+  verificationEmail: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+  },
+  verificationOtpRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  verificationOtpInput: {
+    width: 44,
+    height: 48,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+  },
+  verificationLink: {
+    alignSelf: "flex-end",
+    marginBottom: Spacing.md,
+  },
+  verificationButtons: {
+    flexDirection: "row",
+    gap: Spacing.md,
+  },
+  verificationButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  verificationButtonText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.md,
+  },
+  passwordModalCard: {
+    borderRadius: Radii.xl,
+    borderWidth: 1,
+    maxHeight: "92%",
+    width: "100%",
+  },
+  passwordCardScroll: {
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xl,
+  },
+  passwordNoteCard: {
+    borderWidth: 1,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  passwordNoteTitle: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.xs+1,
+    lineHeight: Typography.line.xs+1,
+    marginBottom: Spacing.xs,
+  },
+  passwordNoteText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
+  },
+  passwordLabel: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+    marginBottom: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  passwordField: {
+    borderWidth: 0.5,
+    borderRadius: Radii.lg,
+    height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+  },
+  passwordInput: {
+    flex: 1,
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
+  },
+  passwordActions: {
+    flexDirection: "row",
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  passwordActionButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  passwordActionText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.md,
+  },
+  passwordError: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+    color: "#DE2E42",
+    marginTop: Spacing.xs,
+  },
+  submitButton: {
+    height: 48,
+    borderRadius: Radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  submitText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.md,
   },
 });

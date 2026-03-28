@@ -1,10 +1,12 @@
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import ArrowLeft from "@/assets/icons/arrow-left.svg";
+import ChatIcon from "@/assets/icons/chat.svg";
 import { Radii } from "@/constants/radii";
 import { Spacing } from "@/constants/spacing";
 import { AppColors } from "@/constants/theme";
@@ -12,6 +14,14 @@ import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
+
+type Ticket = {
+  id: string;
+  ticketId: string;
+  subject: string;
+  status: "Closed" | "Open";
+  createdAt: string;
+};
 
 export default function SupportScreen() {
   const router = useRouter();
@@ -25,6 +35,38 @@ export default function SupportScreen() {
   const fieldBg = isDark ? "#021210" : "#FFFFFF";
   const fieldBorder = isDark ? "#275049" : "#D6D6D6";
   const subtleGlow = toGradient(["rgba(255, 255, 255, 0.04)", "rgba(102, 102, 102, 0)"]);
+  const dashedBorder = isDark ? "rgba(39,80,73,0.7)" : "rgba(214,214,214,0.9)";
+
+  const tickets: Ticket[] = [
+    {
+      id: "1",
+      ticketId: "TY6489586",
+      subject: "How to use KYC Process",
+      status: "Closed",
+      createdAt: "2024-10-23, 13:07:22",
+    },
+    {
+      id: "2",
+      ticketId: "TY6489586",
+      subject: "How to use KYC Process",
+      status: "Closed",
+      createdAt: "2024-10-23, 13:07:22",
+    },
+    {
+      id: "3",
+      ticketId: "TY6489586",
+      subject: "How to use KYC Process",
+      status: "Closed",
+      createdAt: "2024-10-23, 13:07:22",
+    },
+    {
+      id: "4",
+      ticketId: "TY6489586",
+      subject: "How to use KYC Process",
+      status: "Closed",
+      createdAt: "2024-10-23, 13:07:22",
+    },
+  ];
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: pageBackground }]}
@@ -46,13 +88,54 @@ export default function SupportScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <View style={[styles.card, { backgroundColor: fieldBg, borderColor: fieldBorder }]}
+        <Pressable
+          style={[styles.createTicketButton, { backgroundColor: palette.primary }]}
+          onPress={() => Alert.alert("Create Ticket", "Create ticket flow coming soon.")}
         >
-          <Text style={[styles.cardTitle, { color: textPrimary }]}>Need help?</Text>
-          <Text style={[styles.cardSubtitle, { color: textMuted }]}
-          >
-            Reach out to our support team or browse FAQs from this section.
-          </Text>
+          <Ionicons name="add-circle-outline" size={20} color={palette.onPrimary} />
+          <Text style={[styles.createTicketText, { color: palette.onPrimary }]}>Create Ticket</Text>
+        </Pressable>
+
+        <View style={styles.ticketList}>
+          {tickets.map((ticket) => (
+            <View
+              key={ticket.id}
+              style={[styles.ticketCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}
+            >
+              <View style={styles.ticketHeader}>
+                <Pressable style={styles.chatButton} onPress={() => Alert.alert("Chat", "Opening chat...")}>
+                  <ChatIcon width={20} height={20} />
+                  <Text style={[styles.chatText, { color: textPrimary }]}>Chat</Text>
+                </Pressable>
+              </View>
+
+              <View style={[styles.ticketDivider, { borderBottomColor: dashedBorder }]} />
+
+              <View style={styles.ticketRows}>
+                <View style={styles.ticketRow}>
+                  <View style={styles.ticketCell}>
+                    <Text style={[styles.ticketLabel, { color: textMuted }]}>Ticket ID</Text>
+                    <Text style={[styles.ticketValue, { color: textPrimary }]}>{ticket.ticketId}</Text>
+                  </View>
+                  <View style={[styles.ticketCell, styles.rightCell]}>
+                    <Text style={[styles.ticketLabel, { color: textMuted }]}>Subject</Text>
+                    <Text style={[styles.ticketValue, { color: textPrimary }]}>{ticket.subject}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.ticketRow}>
+                  <View style={styles.ticketCell}>
+                    <Text style={[styles.ticketLabel, { color: textMuted }]}>Status</Text>
+                    <Text style={[styles.ticketValue, { color: "#DE2E42" }]}>{ticket.status}</Text>
+                  </View>
+                  <View style={[styles.ticketCell, styles.rightCell]}>
+                    <Text style={[styles.ticketLabel, { color: textMuted }]}>Created at</Text>
+                    <Text style={[styles.ticketValue, { color: textPrimary }]}>{ticket.createdAt}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ))}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -79,7 +162,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   iconButton: {
     width: 34,
@@ -96,20 +179,74 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.xl,
     lineHeight: Typography.line.lg,
   },
-  card: {
+  createTicketButton: {
+    height: 48,
     borderRadius: Radii.lg,
-    borderWidth: 1,
-    padding: Spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
   },
-  cardTitle: {
+  createTicketText: {
     fontFamily: "Geist-SemiBold",
     fontSize: Typography.size.md,
     lineHeight: Typography.line.md,
+  },
+  ticketList: {
+    gap: Spacing.sm,
+  },
+  ticketCard: {
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  ticketHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginBottom: Spacing.xs,
+  },
+  chatButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  chatText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+  },
+  ticketDivider: {
+    borderBottomWidth: 1,
+    borderStyle: "dashed",
+    marginHorizontal: -Spacing.md,
     marginBottom: Spacing.sm,
   },
-  cardSubtitle: {
+  ticketRows: {
+    gap: Spacing.xs,
+  },
+  ticketRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  ticketCell: {
+    flex: 1,
+    gap: 2,
+  },
+  rightCell: {
+    alignItems: "flex-end",
+  },
+  ticketLabel: {
     fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
+  },
+  ticketValue: {
+    fontFamily: "Geist-SemiBold",
     fontSize: Typography.size.sm,
     lineHeight: Typography.line.sm,
   },
 });
+

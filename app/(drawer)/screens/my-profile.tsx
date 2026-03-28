@@ -1,0 +1,448 @@
+import ProfileDark from "@/assets/icons/Drawer/profile_dark.svg";
+import ProfileLight from "@/assets/icons/Drawer/profile_light.svg";
+import ArrowLeft from "@/assets/icons/arrow-left.svg";
+import CalendarIcon from "@/assets/icons/calendar.svg";
+import CheckIcon from "@/assets/icons/check.svg";
+import { Radii } from "@/constants/radii";
+import { Spacing } from "@/constants/spacing";
+import { AppColors } from "@/constants/theme";
+import { Typography } from "@/constants/typography";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import DateTimePicker, { DateTimePickerChangeEvent } from "@react-native-community/datetimepicker";
+import * as DocumentPicker from "expo-document-picker";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useMemo, useState } from "react";
+import {
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
+
+export default function MyProfileScreen() {
+  const router = useRouter();
+  const colorScheme = useColorScheme() ?? "dark";
+  const isDark = colorScheme === "dark";
+  const palette = AppColors[colorScheme];
+
+  const [nickname, setNickname] = useState("");
+  const [bio, setBio] = useState("");
+  const [dob, setDob] = useState<Date | null>(null);
+  const [draftDob, setDraftDob] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+
+  const pageBackground = isDark ? "#020B09" : "#FFFFFF";
+  const textPrimary = isDark ? palette.onPrimary : palette.text;
+  const textMuted = palette.textMuted;
+  const fieldBg = isDark ? "#021210" : "#FFFFFF";
+  const fieldBorder = isDark ? "#275049" : "#D6D6D6";
+  const subtleGlow = toGradient(["rgba(255, 255, 255, 0.04)", "rgba(102, 102, 102, 0)"]);
+
+  const formattedDob = useMemo(() => {
+    if (!dob) return "DD/MM/YYYY";
+    const day = `${dob.getDate()}`.padStart(2, "0");
+    const month = `${dob.getMonth() + 1}`.padStart(2, "0");
+    const year = dob.getFullYear();
+    return `${day}/${month}/${year}`;
+  }, [dob]);
+
+  const openDatePicker = () => {
+    setDraftDob(dob ?? new Date());
+    setShowDatePicker(true);
+  };
+
+  const handleDobChange = (_event: DateTimePickerChangeEvent, selectedDate?: Date) => {
+    if (Platform.OS === "android") {
+      // Android auto-dismisses — save immediately
+      setShowDatePicker(false);
+      if (selectedDate) {
+        setDob(selectedDate);
+        setDraftDob(selectedDate);
+      }
+    } else {
+      // iOS stays open until Done
+      if (selectedDate) setDraftDob(selectedDate);
+    }
+  };
+
+  const onUploadImage = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["image/*"],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled) return;
+      const selected = result.assets?.[0];
+      if (!selected?.uri) return;
+      setAvatarUri(selected.uri);
+    } catch {
+      Alert.alert("Upload failed", "Unable to open image picker.");
+    }
+  };
+
+  const onSubmit = () => {
+    if (!nickname.trim()) {
+      Alert.alert("Validation", "Please enter your nickname.");
+      return;
+    }
+    if (!dob) {
+      Alert.alert("Validation", "Please select your date of birth.");
+      return;
+    }
+
+    Alert.alert("Profile Updated", "Your profile has been submitted.");
+  };
+
+  return (
+    <SafeAreaView style={[styles.root, { backgroundColor: pageBackground }]}>
+      <StatusBar style={isDark ? "light" : "dark"} />
+
+      {isDark ? (
+        <View pointerEvents="none" style={styles.topGlow}>
+          <LinearGradient colors={subtleGlow} style={StyleSheet.absoluteFillObject} />
+        </View>
+      ) : null}
+
+      {/* KeyboardAvoidingView lifts the ScrollView above the keyboard */}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.header}>
+            <Pressable style={styles.iconButton} onPress={() => router.back()}>
+              <ArrowLeft width={24} height={24} color={textMuted} />
+            </Pressable>
+            <Text style={[styles.headerTitle, { color: textPrimary }]}>My Profile</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          <View style={[styles.profileCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+            <View style={styles.profileTopRow}>
+              <View style={[styles.avatarWrap, { backgroundColor: palette.primary }]}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarFallback}>J</Text>
+                )}
+              </View>
+
+              <View style={styles.profileMeta}>
+                <View style={styles.nameRow}>
+                  <Text style={[styles.nameText, { color: textPrimary }]}>Johntestdemo</Text>
+                  <View style={[styles.verifyBadge, { backgroundColor: palette.primary }]}>
+                    <CheckIcon width={10} height={10} color={palette.onPrimary} />
+                  </View>
+                </View>
+                <Text style={[styles.profileHint, { color: textMuted }]}>
+                  Update your nickname and manage your account.
+                </Text>
+              </View>
+
+              <Pressable style={[styles.uploadButton, { backgroundColor: palette.primary }]} onPress={onUploadImage}>
+                <Text style={[styles.uploadButtonText, { color: palette.onPrimary }]}>Upload Image</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <Text style={[styles.sectionTitle, { color: textPrimary }]}>Basic Information</Text>
+
+          <Text style={[styles.label, { color: textPrimary }]}>Nickname</Text>
+          <View style={[styles.inputRow, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+            {isDark ? (
+              <ProfileDark width={20} height={20} style={styles.inputIcon} />
+            ) : (
+              <ProfileLight width={20} height={20} style={styles.inputIcon} />
+            )}
+            <TextInput
+              value={nickname}
+              onChangeText={setNickname}
+              placeholder="Enter your name"
+              placeholderTextColor={textMuted}
+              returnKeyType="next"
+              style={[styles.input, { color: textPrimary }]}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: textPrimary }]}>Date of Birth</Text>
+          <Pressable
+            style={[styles.inputRow, { backgroundColor: fieldBg, borderColor: fieldBorder }]}
+            onPress={openDatePicker}
+          >
+            <Text style={[styles.input, { color: textMuted }]}>{formattedDob}</Text>
+            <CalendarIcon width={22} height={22} />
+          </Pressable>
+
+          <Text style={[styles.label, { color: textPrimary }]}>Bio</Text>
+          <TextInput
+            value={bio}
+            onChangeText={setBio}
+            multiline
+            placeholder="Tell us about yourself"
+            placeholderTextColor={textMuted}
+            returnKeyType="done"
+            blurOnSubmit
+            style={[
+              styles.bioInput,
+              { color: textPrimary, backgroundColor: fieldBg, borderColor: fieldBorder },
+            ]}
+          />
+
+          <Pressable style={[styles.submitButton, { backgroundColor: palette.primary }]} onPress={onSubmit}>
+            <Text style={[styles.submitText, { color: palette.onPrimary }]}>Submit</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowDatePicker(false)}>
+          <Pressable onPress={() => {}}>
+            <View style={[styles.modalCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+              <DateTimePicker
+                value={draftDob}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "calendar"}
+                onValueChange={handleDobChange}
+              />
+              {/* Show Cancel/Done only on iOS; Android auto-dismisses */}
+              {Platform.OS === "ios" && (
+                <View style={styles.modalActions}>
+                  <Pressable
+                    style={[styles.modalButton, { borderColor: fieldBorder, backgroundColor: fieldBg }]}
+                    onPress={() => setShowDatePicker(false)}
+                  >
+                    <Text style={[styles.modalButtonText, { color: textMuted }]}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalButton, { borderColor: palette.primary, backgroundColor: palette.primary }]}
+                    onPress={() => {
+                      setDob(draftDob);
+                      setShowDatePicker(false);
+                    }}
+                  >
+                    <Text style={[styles.modalButtonText, { color: palette.onPrimary }]}>Done</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  topGlow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 160,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.xl + Spacing.lg,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.md,
+  },
+  iconButton: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerSpacer: {
+    width: 34,
+    height: 28,
+  },
+  headerTitle: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.xl,
+    lineHeight: Typography.line.lg,
+  },
+  profileCard: {
+    borderWidth: 1,
+    borderRadius: Radii.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  profileTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  avatarWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarFallback: {
+    fontFamily: "Geist-Bold",
+    fontSize: Typography.size.lg,
+    color: "#FFFFFF",
+  },
+  profileMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  nameText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md -1,
+    lineHeight: Typography.line.md -1,
+  },
+  verifyBadge: {
+    width: 15 ,
+    height: 15,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileHint: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs -1,
+    lineHeight: Typography.line.xs -1,
+  },
+  uploadButton: {
+    minWidth: 93,
+    height: 27,
+    borderRadius: Radii.xs,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.sm,
+  },
+  uploadButtonText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.xs -1,
+    lineHeight: Typography.line.xs -1,
+  },
+  sectionTitle: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.lg,
+    lineHeight: Typography.line.lg,
+    marginBottom: Spacing.sm,
+  },
+  label: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.md,
+    marginBottom: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  inputRow: {
+    height: 58,
+    borderWidth: 1,
+    borderRadius: Radii.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+  },
+  inputIcon: {
+    marginRight: Spacing.sm,
+  },
+  input: {
+    flex: 1,
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+  },
+  bioInput: {
+    minHeight: 110,
+    borderWidth: 1,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    textAlignVertical: "top",
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.md,
+  },
+  submitButton: {
+    marginTop: Spacing.lg,
+    height: 56,
+    borderRadius: Radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  submitText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.lg,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.lg,
+  },
+  modalCard: {
+    borderWidth: 1,
+    borderRadius: Radii.lg,
+    padding: Spacing.md,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  modalButton: {
+    flex: 1,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: Radii.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalButtonText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.sm + 1,
+    lineHeight: Typography.line.sm + 1,
+  },
+});

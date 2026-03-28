@@ -122,8 +122,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
     {
       id: "kyc",
       label: "KYC Verification",
-      route: "/(drawer)/kyc-verification",
-      match: ["/kyc-verification"],
+      route: "/(drawer)/verifyaccount",
+      match: ["/verifyaccount"],
       iconDark: KycDark,
       iconLight: KycLight,
     },
@@ -295,6 +295,8 @@ export default function DrawerLayout() {
       <Drawer.Screen name="(tabs)" options={{ title: "Home" }} />
       <Drawer.Screen name="profile" options={{ title: "Profile" }} />
       <Drawer.Screen name="security" options={{ title: "Security" }} />
+      <Drawer.Screen name="account-activity" options={{ title: "Account Activity" }} />
+      <Drawer.Screen name="verifyaccount" options={{ title: "Verify Account" }} />
       <Drawer.Screen name="kyc-verification" options={{ title: "KYC Verification" }} />
       <Drawer.Screen name="support" options={{ title: "Support" }} />
     </Drawer>
@@ -316,7 +318,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xxxl+10,
     paddingBottom: Spacing.xxl,
-    backgroundColor:"#000505"
   },
   profileRow: {
     flexDirection: "row",

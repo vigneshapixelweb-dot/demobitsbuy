@@ -27,8 +27,7 @@ export default function KycVerificationScreen() {
   const subtleGlow = toGradient(["rgba(255, 255, 255, 0.04)", "rgba(102, 102, 102, 0)"]);
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: pageBackground }]}
-    >
+    <SafeAreaView style={[styles.root, { backgroundColor: pageBackground }]}>
       <StatusBar style={isDark ? "light" : "dark"} />
 
       {isDark ? (
@@ -48,8 +47,7 @@ export default function KycVerificationScreen() {
 
         <View style={[styles.card, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
           <Text style={[styles.cardTitle, { color: textPrimary }]}>Verify your identity</Text>
-          <Text style={[styles.cardSubtitle, { color: textMuted }]}
-          >
+          <Text style={[styles.cardSubtitle, { color: textMuted }]}>
             Submit your documents to unlock higher limits and full access.
           </Text>
         </View>

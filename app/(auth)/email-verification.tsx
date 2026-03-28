@@ -1,25 +1,25 @@
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { AppColors } from '@/constants/theme';
-import { Spacing } from '@/constants/spacing';
-import { Radii } from '@/constants/radii';
-import { Typography } from '@/constants/typography';
 import ArrowLeft from '@/assets/icons/arrow-left.svg';
+import { Radii } from '@/constants/radii';
+import { Spacing } from '@/constants/spacing';
+import { AppColors } from '@/constants/theme';
+import { Typography } from '@/constants/typography';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
@@ -135,7 +135,8 @@ export default function EmailVerificationScreen() {
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.select({ ios: 'padding', android: undefined })}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.content}
