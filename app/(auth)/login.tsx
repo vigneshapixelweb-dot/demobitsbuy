@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +15,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppColors } from '@/constants/theme';
@@ -22,6 +26,7 @@ import { Typography } from '@/constants/typography';
 import ArrowLeft from '@/assets/icons/arrow-left.svg';
 import MailIcon from '@/assets/icons/mail.svg';
 import LockIcon from '@/assets/icons/lock.svg';
+import { useAuthStore } from '@/stores/auth-store';
 
 type Errors = {
   email?: string;
@@ -37,7 +42,12 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const authError = useAuthStore((state) => state.error);
+  const login = useAuthStore((state) => state.login);
+  const clearError = useAuthStore((state) => state.clearError);
 
   const inputLabelColor = useMemo(
     () => ({ color: palette.text }),
@@ -46,24 +56,50 @@ export default function LoginScreen() {
 
   const validateEmail = (value: string) => EMAIL_PATTERN.test(value.trim());
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    Keyboard.dismiss();
+    const useDebugPayload = true;
     const nextErrors: Errors = {};
     const trimmedEmail = email.trim();
 
-    if (!trimmedEmail || !validateEmail(trimmedEmail)) {
-      nextErrors.email = 'Enter a valid email address.';
-    }
-    if (password.length < 8) {
-      nextErrors.password = 'Password must be at least 8 characters.';
+    if (!useDebugPayload) {
+      if (!trimmedEmail || !validateEmail(trimmedEmail)) {
+        nextErrors.email = 'Enter a valid email address.';
+      }
+      if (password.length < 8) {
+        nextErrors.password = 'Password must be at least 8 characters.';
+      }
     }
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) {
-      // Hook up API call here.
+      const deviceId = Constants.sessionId ?? 'unknown';
+      const payload = useDebugPayload
+        ? {
+            usernameEmail: 'testmail@mailinator.com',
+            password: 'Test@123',
+            deviceType: 'android',
+            deviceId: 'c9b1f6a2-8d3e-4f91-bc2a-12ab34cd56ef',
+            deviceToken: 'token123',
+          }
+        : {
+            usernameEmail: trimmedEmail,
+            password,
+            deviceType: 'android',
+            deviceId,
+            deviceToken: 'token123',
+          };
+      const ok = await login(payload);
+      if (ok) {
+        router.replace('/(drawer)/(tabs)');
+      }
     }
   };
 
   const handleEmailChange = (value: string) => {
+    if (authError) {
+      clearError();
+    }
     setEmail(value);
     setErrors((prev) => ({
       ...prev,
@@ -72,6 +108,9 @@ export default function LoginScreen() {
   };
 
   const handlePasswordChange = (value: string) => {
+    if (authError) {
+      clearError();
+    }
     setPassword(value);
     setErrors((prev) => ({
       ...prev,
@@ -155,9 +194,20 @@ export default function LoginScreen() {
                 onChangeText={handlePasswordChange}
                 placeholder="Enter your password"
                 placeholderTextColor={palette.textMuted}
-                secureTextEntry
+                secureTextEntry={!isPasswordVisible}
                 style={[styles.input, { color: palette.text }]}
               />
+              <Pressable
+                onPress={() => setIsPasswordVisible((prev) => !prev)}
+                style={styles.iconButtonSmall}
+                accessibilityRole="button"
+                accessibilityLabel={isPasswordVisible ? 'Hide password' : 'Show password'}>
+                <Ionicons
+                  name={isPasswordVisible ? 'eye-off' : 'eye'}
+                  size={20}
+                  color={palette.textMuted}
+                />
+              </Pressable>
             </View>
             {errors.password ? (
               <Text style={[styles.errorText, { color: palette.alert }]}>{errors.password}</Text>
@@ -170,15 +220,25 @@ export default function LoginScreen() {
             </Text>
           </Pressable>
 
-          <Pressable onPress={handleSubmit} style={styles.buttonWrapper}>
+          <Pressable onPress={handleSubmit} style={styles.buttonWrapper} disabled={isLoading}>
             <LinearGradient
               colors={palette.gradients.button}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
-              style={[styles.button, { borderColor: palette.border }]}>
-              <Text style={[styles.buttonText, { color: palette.onPrimary }]}>Login</Text>
+              style={[
+                styles.button,
+                { borderColor: palette.border, opacity: isLoading ? 0.7 : 1 },
+              ]}>
+              {isLoading ? (
+                <ActivityIndicator color={palette.onPrimary} />
+              ) : (
+                <Text style={[styles.buttonText, { color: palette.onPrimary }]}>Login</Text>
+              )}
             </LinearGradient>
           </Pressable>
+          {authError ? (
+            <Text style={[styles.errorText, { color: "#ff0000" }]}>{authError}</Text>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -257,6 +317,10 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: Typography.size.md,
+  },
+  iconButtonSmall: {
+    // padding: Spacing.xs,
+    paddingRight:Spacing.xs,
   },
   errorText: {
     fontSize: Typography.size.xs,

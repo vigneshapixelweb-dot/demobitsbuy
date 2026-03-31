@@ -8,6 +8,7 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuthStore } from '@/stores/auth-store';
 
 export const unstable_settings = {
   anchor: '(drawer)',
@@ -17,6 +18,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const hydrate = useAuthStore((state) => state.hydrate);
   const [loaded] = useFonts({
     'Geist-Regular': require('@/assets/fonts/Geist-Regular.ttf'),
     'Geist-Medium': require('@/assets/fonts/Geist-Medium.ttf'),
@@ -44,6 +46,10 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
 
   if (!loaded) {
     return null;

@@ -1,6 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DrawerActions, useNavigation } from "@react-navigation/native";
 import {
   Animated,
   Pressable,
@@ -90,6 +91,7 @@ const asGradient = (colors: readonly string[]) =>
   colors as [string, string, ...string[]];
 
 export default function DashboardScreen() {
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? "dark";
   const palette = AppColors[colorScheme];
@@ -173,7 +175,10 @@ export default function DashboardScreen() {
             Dashboard
           </Text>
 
-          <Pressable style={styles.menuIcon}>
+          <Pressable
+            style={styles.menuIcon}
+            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+          >
             <DrawerIcon width={16} height={16} />
           </Pressable>
         </View>

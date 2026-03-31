@@ -31,6 +31,12 @@ import { Spacing } from "@/constants/spacing";
 import { AppColors } from "@/constants/theme";
 import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useAuthStore } from "@/stores/auth-store";
+import {
+  disableGoogle2FA,
+  generateGoogleSecret,
+  verifyGoogleSecret,
+} from "@/services/auth/google-2fa";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 const OTP_LENGTH = 6;
@@ -106,9 +112,14 @@ export default function SecurityScreen() {
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showLoginPasswordModal, setShowLoginPasswordModal] = useState(false);
+  const [isGoogle2FAEnabled, setIsGoogle2FAEnabled] = useState(false);
+  const [googleSecret, setGoogleSecret] = useState("");
+  const [googleQrUri, setGoogleQrUri] = useState<string | null>(null);
+  const [isGoogleBusy, setIsGoogleBusy] = useState(false);
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [otpError, setOtpError] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const token = useAuthStore((state) => state.token);
 
   const inputsRef = useRef<Array<TextInput | null>>([]);
 
@@ -123,10 +134,10 @@ export default function SecurityScreen() {
   const noteBorder = "#F3BA2F";
   const noteBg = isDark ? withAlpha("#F3BA2F", 0.12) : "#FFF8E6";
   const AuthenticatorAppIcon = isDark ? AuthenticatorAppDark : AuthenticatorAppLight;
-  const walletAddress = "4ff6re2484fs8eFD5fsS458s2wca";
   const verificationEmail = "jakeperalta@gmail.com";
+  const qrSeed = googleSecret || verificationEmail || "";
 
-  const qrMatrix = useMemo(() => buildPseudoQrMatrix(walletAddress), [walletAddress]);
+  const qrMatrix = useMemo(() => buildPseudoQrMatrix(qrSeed), [qrSeed]);
 
   useEffect(() => {
     if (!showOtpModal || secondsLeft === 0) return;
@@ -136,11 +147,22 @@ export default function SecurityScreen() {
     return () => clearInterval(timer);
   }, [showOtpModal, secondsLeft]);
 
-  const openOtpModal = () => {
+  const openOtpModal = async () => {
     setShowOtpModal(true);
     setOtp(Array(OTP_LENGTH).fill(""));
     setOtpError("");
     setSecondsLeft(RESEND_SECONDS);
+    if (isGoogle2FAEnabled) return;
+    setIsGoogleBusy(true);
+    const result = await generateGoogleSecret(token ?? undefined);
+    if (!result.success) {
+      setOtpError(result.message ?? "Unable to generate Google Authenticator secret.");
+      setIsGoogleBusy(false);
+      return;
+    }
+    setGoogleSecret(result.secret ?? "");
+    setGoogleQrUri(result.qrImageUrl ?? null);
+    setIsGoogleBusy(false);
   };
 
   const focusInput = (index: number) => {
@@ -196,28 +218,55 @@ export default function SecurityScreen() {
     }
   };
 
-  const handleOtpSubmit = () => {
+  const handleOtpSubmit = async () => {
     const code = otp.join("");
     if (code.length !== OTP_LENGTH) {
       setOtpError("Please enter the 6-digit code.");
       return;
     }
     setOtpError("");
-    Alert.alert("OTP Submitted", "Verification submitted.");
+    setIsGoogleBusy(true);
+    const result = isGoogle2FAEnabled
+      ? await disableGoogle2FA(code, token ?? undefined)
+      : await verifyGoogleSecret(code, token ?? undefined);
+    if (!result.success) {
+      setOtpError(result.message ?? "Verification failed.");
+      setIsGoogleBusy(false);
+      return;
+    }
+    setIsGoogleBusy(false);
+    setShowOtpModal(false);
+    setOtp(Array(OTP_LENGTH).fill(""));
+    setIsGoogle2FAEnabled(!isGoogle2FAEnabled);
+    Alert.alert(
+      isGoogle2FAEnabled ? "Google Auth Disabled" : "Google Auth Enabled",
+      result.message ?? "Success.",
+    );
   };
 
-  const handleOtpResend = () => {
-    if (secondsLeft !== 0) return;
+  const handleOtpResend = async () => {
+    if (secondsLeft !== 0 || isGoogle2FAEnabled) return;
     setSecondsLeft(RESEND_SECONDS);
-    Alert.alert("OTP Sent", "A new code has been sent.");
+    setIsGoogleBusy(true);
+    const result = await generateGoogleSecret(token ?? undefined);
+    if (!result.success) {
+      setOtpError(result.message ?? "Unable to regenerate secret.");
+      setIsGoogleBusy(false);
+      return;
+    }
+    setGoogleSecret(result.secret ?? "");
+    setGoogleQrUri(result.qrImageUrl ?? null);
+    setIsGoogleBusy(false);
   };
 
-  const resendLabel = secondsLeft === 0 ? "Send Code" : `Send Code (${secondsLeft}s)`;
+  const resendLabel =
+    secondsLeft === 0 ? "Generate Again" : `Generate Again (${secondsLeft}s)`;
 
   const onCopyWallet = async () => {
+    if (!googleSecret) return;
     try {
-      await Clipboard.setStringAsync(walletAddress);
-      Alert.alert("Copied", "Wallet address copied.");
+      await Clipboard.setStringAsync(googleSecret);
+      Alert.alert("Copied", "Secret key copied.");
     } catch {
       Alert.alert("Unable to copy", "Please try again.");
     }
@@ -228,8 +277,8 @@ export default function SecurityScreen() {
       id: "google-auth",
       title: "Google Authenticator",
       description: "BitsBuyss of security using Google Authenticator for withdrawals and security actions.",
-      buttonLabel: "Set Up",
-      buttonTone: "primary",
+      buttonLabel: isGoogle2FAEnabled ? "Disable" : "Enable",
+      buttonTone: isGoogle2FAEnabled ? "danger" : "primary",
       Icon: GoogleAuthIcon,
       onPress: openOtpModal,
     },
@@ -393,6 +442,8 @@ export default function SecurityScreen() {
         showProtectModal={showProtectModal}
         showVerificationModal={showVerificationModal}
         showLoginPasswordModal={showLoginPasswordModal}
+        isGoogle2FAEnabled={isGoogle2FAEnabled}
+        isGoogleBusy={isGoogleBusy}
         setShowOtpModal={setShowOtpModal}
         setShowProtectModal={setShowProtectModal}
         setShowVerificationModal={setShowVerificationModal}
@@ -405,7 +456,8 @@ export default function SecurityScreen() {
         noteBg={noteBg}
         palette={palette}
         qrMatrix={qrMatrix}
-        walletAddress={walletAddress}
+        walletAddress={googleSecret}
+        qrImageUrl={googleQrUri}
         verificationEmail={verificationEmail}
         onCopyWallet={onCopyWallet}
         otp={otp}
@@ -659,6 +711,10 @@ const styles = StyleSheet.create({
     borderRadius: Radii.lg,
     marginBottom: Spacing.md,
   },
+  qrImage: {
+    width: 180,
+    height: 180,
+  },
   qrRow: {
     flexDirection: "row",
   },
@@ -727,8 +783,8 @@ const styles = StyleSheet.create({
   },
   resendLink: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
   },
   verificationText: {
     fontFamily: "Geist-Regular",

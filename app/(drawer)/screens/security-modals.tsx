@@ -2,7 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -30,6 +32,8 @@ type SecurityModalsProps = {
   showProtectModal: boolean;
   showVerificationModal: boolean;
   showLoginPasswordModal: boolean;
+  isGoogle2FAEnabled: boolean;
+  isGoogleBusy: boolean;
   setShowOtpModal: (value: boolean) => void;
   setShowProtectModal: (value: boolean) => void;
   setShowVerificationModal: (value: boolean) => void;
@@ -42,6 +46,7 @@ type SecurityModalsProps = {
   noteBg: string;
   palette: PaletteSubset;
   qrMatrix: boolean[][];
+  qrImageUrl?: string | null;
   walletAddress: string;
   verificationEmail: string;
   onCopyWallet: () => void;
@@ -64,6 +69,8 @@ export default function SecurityModals({
   showProtectModal,
   showVerificationModal,
   showLoginPasswordModal,
+  isGoogle2FAEnabled,
+  isGoogleBusy,
   setShowOtpModal,
   setShowProtectModal,
   setShowVerificationModal,
@@ -76,6 +83,7 @@ export default function SecurityModals({
   noteBg,
   palette,
   qrMatrix,
+  qrImageUrl,
   walletAddress,
   verificationEmail,
   onCopyWallet,
@@ -104,21 +112,9 @@ export default function SecurityModals({
   const verificationInputsRef = useRef<Array<TextInput | null>>([]);
 
   useEffect(() => {
-    if (!showOtpModal) return;
-    const timer = setTimeout(() => {
-      inputsRef.current[0]?.focus();
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [showOtpModal, inputsRef]);
-
-  useEffect(() => {
     if (!showVerificationModal) return;
     setVerificationOtp(Array(OTP_LENGTH).fill(""));
     setVerificationError("");
-    const timer = setTimeout(() => {
-      verificationInputsRef.current[0]?.focus();
-    }, 150);
-    return () => clearTimeout(timer);
   }, [showVerificationModal]);
 
   useEffect(() => {
@@ -245,45 +241,69 @@ export default function SecurityModals({
             >
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: textPrimary }]}>
-                  Enable Google Authenticator
+                  {isGoogle2FAEnabled
+                    ? "Disable Google Authenticator"
+                    : "Enable Google Authenticator"}
                 </Text>
                 <Pressable style={styles.modalClose} onPress={() => setShowOtpModal(false)}>
                   <CloseIcon width={22} height={22} />
                 </Pressable>
               </View>
-              <Text style={[styles.modalText, { color: textMuted }]}>
-                Install google Authenticator App in Your Mobile and Scan QR Code (or) If You are
-                Unable to Scan the QR Code, Please enter the Code Manually into the App
-              </Text>
-
-              <View style={[styles.qrCard, { borderColor: fieldBorder, backgroundColor: fieldBg }]}>
-                <View style={styles.qrFrame}>
-                  {qrMatrix.map((row, rowIndex) => (
-                    <View key={`qr-row-${rowIndex}`} style={styles.qrRow}>
-                      {row.map((cell, cellIndex) => (
-                        <View
-                          key={`qr-cell-${rowIndex}-${cellIndex}`}
-                          style={[styles.qrCell, { backgroundColor: cell ? "#0B0B0B" : "#FFFFFF" }]}
-                        />
-                      ))}
-                    </View>
-                  ))}
-                </View>
-
-                <Text style={[styles.walletTitle, { color: textPrimary }]}>Wallet Address</Text>
-                <View style={[styles.walletField, { borderColor: fieldBorder }]}>
-                  <Text style={[styles.walletValue, { color: textMuted }]} numberOfLines={1}>
-                    {walletAddress}
-                  </Text>
-                  <Pressable onPress={onCopyWallet}>
-                    <Ionicons name="copy-outline" size={20} color={textMuted} />
-                  </Pressable>
-                </View>
-                <Text style={[styles.walletNote, { color: textMuted }]}>
-                  Note: Please save your private key properly in case of any login issues caused by
-                  switching or losing your phone.
+              {isGoogle2FAEnabled ? (
+                <Text style={[styles.modalText, { color: textMuted }]}>
+                  Enter the 6-digit code from your authenticator app to disable Google
+                  Authenticator.
                 </Text>
-              </View>
+              ) : (
+                <>
+                  <Text style={[styles.modalText, { color: textMuted }]}>
+                    Install Google Authenticator on your phone and scan the QR code. If you cannot
+                    scan the QR code, enter the secret key manually.
+                  </Text>
+
+                  <View
+                    style={[styles.qrCard, { borderColor: fieldBorder, backgroundColor: fieldBg }]}
+                  >
+                    <View style={styles.qrFrame}>
+                      {qrImageUrl ? (
+                        <Image
+                          source={{ uri: qrImageUrl }}
+                          style={styles.qrImage}
+                          resizeMode="contain"
+                        />
+                      ) : (
+                        qrMatrix.map((row, rowIndex) => (
+                          <View key={`qr-row-${rowIndex}`} style={styles.qrRow}>
+                            {row.map((cell, cellIndex) => (
+                              <View
+                                key={`qr-cell-${rowIndex}-${cellIndex}`}
+                                style={[
+                                  styles.qrCell,
+                                  { backgroundColor: cell ? "#0B0B0B" : "#FFFFFF" },
+                                ]}
+                              />
+                            ))}
+                          </View>
+                        ))
+                      )}
+                    </View>
+
+                    <Text style={[styles.walletTitle, { color: textPrimary }]}>Secret Key</Text>
+                    <View style={[styles.walletField, { borderColor: fieldBorder }]}>
+                      <Text style={[styles.walletValue, { color: textMuted }]} numberOfLines={1}>
+                        {walletAddress || "Generating..."}
+                      </Text>
+                      <Pressable onPress={onCopyWallet} disabled={!walletAddress}>
+                        <Ionicons name="copy-outline" size={20} color={textMuted} />
+                      </Pressable>
+                    </View>
+                    <Text style={[styles.walletNote, { color: textMuted }]}>
+                      Note: Save this secret key. You will need it if you lose access to your
+                      authenticator app.
+                    </Text>
+                  </View>
+                </>
+              )}
 
               <Text style={[styles.sectionTitle, { color: textPrimary }]}>Enter the OTP</Text>
               <View style={styles.otpRow}>
@@ -311,23 +331,35 @@ export default function SecurityModals({
                 <Text style={[styles.errorText, { color: "#DE2E42" }]}>{otpError}</Text>
               ) : null}
 
-              <View style={styles.resendRow}>
-                <Text style={[styles.resendText, { color: textMuted }]}>
-                  Mail not received click resend link,
-                </Text>
-                <Pressable onPress={handleOtpResend} disabled={secondsLeft !== 0}>
-                  <Text style={[styles.resendLink, { color: palette.accent }]}>{resendLabel}</Text>
-                </Pressable>
-              </View>
+              {!isGoogle2FAEnabled ? (
+                <View style={styles.resendRow}>
+                  <Text style={[styles.resendText, { color: textMuted }]}>
+                    Need a new secret? Generate again,
+                  </Text>
+                  <Pressable onPress={handleOtpResend} disabled={secondsLeft !== 0 || isGoogleBusy}>
+                    <Text style={[styles.resendLink, { color: palette.accent }]}>{resendLabel}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
 
-              <Pressable onPress={handleOtpSubmit} style={styles.submitButton}>
+              <Pressable
+                onPress={handleOtpSubmit}
+                style={styles.submitButton}
+                disabled={isGoogleBusy}
+              >
                 <LinearGradient
                   colors={palette.gradients.button as [string, string, ...string[]]}
                   start={{ x: 0, y: 0.5 }}
                   end={{ x: 1, y: 0.5 }}
                   style={StyleSheet.absoluteFillObject}
                 />
-                <Text style={[styles.submitText, { color: palette.onPrimary }]}>Submit</Text>
+                {isGoogleBusy ? (
+                  <ActivityIndicator color={palette.onPrimary} />
+                ) : (
+                  <Text style={[styles.submitText, { color: palette.onPrimary }]}>
+                    {isGoogle2FAEnabled ? "Disable" : "Enable"}
+                  </Text>
+                )}
               </Pressable>
             </ScrollView>
           </View>
