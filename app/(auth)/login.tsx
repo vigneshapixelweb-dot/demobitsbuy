@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
+import BottomSheet from '@/components/ui/BottomSheet';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppColors } from '@/constants/theme';
@@ -33,6 +34,8 @@ type Errors = {
   password?: string;
 };
 
+const OTP_LENGTH = 6;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen() {
@@ -43,10 +46,18 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [twoFACode, setTwoFACode] = useState<string[]>(Array(OTP_LENGTH).fill(''));
+  const [twoFAError, setTwoFAError] = useState('');
+  const [showTwoFAModal, setShowTwoFAModal] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
+  const otpInputsRef = useRef<Array<TextInput | null>>([]);
   const isLoading = useAuthStore((state) => state.isLoading);
   const authError = useAuthStore((state) => state.error);
+  const requires2FA = useAuthStore((state) => state.requires2FA);
+  const twoFAMethod = useAuthStore((state) => state.pendingTwoFAMethod);
   const login = useAuthStore((state) => state.login);
+  const verify2FA = useAuthStore((state) => state.verify2FA);
+  const clearTwoFA = useAuthStore((state) => state.clearTwoFA);
   const clearError = useAuthStore((state) => state.clearError);
 
   const inputLabelColor = useMemo(
@@ -55,6 +66,23 @@ export default function LoginScreen() {
   );
 
   const validateEmail = (value: string) => EMAIL_PATTERN.test(value.trim());
+
+  useEffect(() => {
+    if (requires2FA) {
+      setShowTwoFAModal(true);
+      setTwoFAError('');
+      setTwoFACode(Array(OTP_LENGTH).fill(''));
+    }
+  }, [requires2FA]);
+
+  useEffect(() => {
+    if (!showTwoFAModal) return;
+    const timer = setTimeout(() => {
+      otpInputsRef.current[0]?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [showTwoFAModal]);
+
 
   const handleSubmit = async () => {
     Keyboard.dismiss();
@@ -96,6 +124,142 @@ export default function LoginScreen() {
     }
   };
 
+  const handleVerify2FA = async () => {
+    const cleaned = twoFACode.join('');
+    if (cleaned.length !== OTP_LENGTH) {
+      setTwoFAError('Enter the 6-digit code.');
+      return;
+    }
+    setTwoFAError('');
+    const ok = await verify2FA(cleaned);
+    if (ok) {
+      setShowTwoFAModal(false);
+      router.replace('/(drawer)/(tabs)');
+    }
+  };
+
+  const handleClose2FA = () => {
+    setShowTwoFAModal(false);
+    setTwoFAError('');
+    setTwoFACode(Array(OTP_LENGTH).fill(''));
+    clearTwoFA();
+    clearError();
+  };
+
+  const focusOtpInput = (index: number) => {
+    otpInputsRef.current[index]?.focus();
+  };
+
+  const handleOtpChange = (value: string, index: number) => {
+    if (twoFAError) setTwoFAError('');
+    if (!value) {
+      const next = [...twoFACode];
+      next[index] = '';
+      setTwoFACode(next);
+      return;
+    }
+
+    const cleaned = value.replace(/\D/g, '');
+    if (!cleaned) return;
+
+    const next = [...twoFACode];
+    if (cleaned.length > 1) {
+      const chars = cleaned.split('');
+      for (let i = 0; i < OTP_LENGTH; i += 1) {
+        next[i] = chars[i] ?? '';
+      }
+      setTwoFACode(next);
+      const focusIndex = Math.min(cleaned.length, OTP_LENGTH) - 1;
+      if (focusIndex >= 0) {
+        focusOtpInput(focusIndex);
+      }
+      return;
+    }
+
+    next[index] = cleaned;
+    setTwoFACode(next);
+    if (index < OTP_LENGTH - 1) {
+      focusOtpInput(index + 1);
+    }
+  };
+
+  const handleOtpKeyPress = (key: string, index: number) => {
+    if (key !== 'Backspace') return;
+    if (twoFACode[index]) {
+      const next = [...twoFACode];
+      next[index] = '';
+      setTwoFACode(next);
+      return;
+    }
+    if (index > 0) {
+      focusOtpInput(index - 1);
+      const next = [...twoFACode];
+      next[index - 1] = '';
+      setTwoFACode(next);
+    }
+  };
+
+  const renderTwoFAContent = () => (
+    <View style={styles.twoFAContent}>
+      <View style={styles.sheetHeader}>
+        <Text style={[styles.twoFATitle, { color: palette.text }]}>2FA Verification</Text>
+        <Pressable onPress={handleClose2FA} style={styles.sheetCloseButton}>
+          <Ionicons name="close" size={20} color={palette.textMuted} />
+        </Pressable>
+      </View>
+      <Text style={[styles.twoFASubtitle, { color: palette.textMuted }]}>
+        {twoFAMethod === 'email'
+          ? 'Enter the 6-digit code sent to your email.'
+          : 'Enter the 6-digit code from Google Authenticator.'}
+      </Text>
+      <View style={styles.otpRow}>
+        {twoFACode.map((digit, index) => (
+          <TextInput
+            key={`twofa-${index}`}
+            ref={(ref) => {
+              otpInputsRef.current[index] = ref;
+            }}
+            value={digit}
+            onChangeText={(value) => handleOtpChange(value, index)}
+            onKeyPress={({ nativeEvent }) => handleOtpKeyPress(nativeEvent.key, index)}
+            keyboardType="number-pad"
+            maxLength={1}
+            textAlign="center"
+            placeholderTextColor={palette.textMuted}
+            style={[
+              styles.otpInput,
+              { borderColor: palette.border, backgroundColor: palette.surface, color: palette.text },
+            ]}
+          />
+        ))}
+      </View>
+      {twoFAError || authError ? (
+        <Text style={[styles.errorText, { color: palette.alert }]}>
+          {twoFAError || authError}
+        </Text>
+      ) : null}
+      <View style={styles.twoFAActions}>
+        <Pressable
+          style={[styles.twoFAButton, { borderColor: palette.border }]}
+          onPress={handleClose2FA}
+        >
+          <Text style={[styles.twoFAButtonText, { color: palette.text }]}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.twoFAButton, { backgroundColor: palette.primary }]}
+          onPress={handleVerify2FA}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color={palette.onPrimary} />
+          ) : (
+            <Text style={[styles.twoFAButtonText, { color: palette.onPrimary }]}>Verify</Text>
+          )}
+        </Pressable>
+      </View>
+    </View>
+  );
+
   const handleEmailChange = (value: string) => {
     if (authError) {
       clearError();
@@ -119,7 +283,8 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: palette.background }]}>
+    <>
+      <SafeAreaView style={[styles.root, { backgroundColor: palette.background }]}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       <View
         style={StyleSheet.absoluteFillObject}
@@ -236,12 +401,23 @@ export default function LoginScreen() {
               )}
             </LinearGradient>
           </Pressable>
-          {authError ? (
+          {authError && !showTwoFAModal ? (
             <Text style={[styles.errorText, { color: "#ff0000" }]}>{authError}</Text>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+
+      </SafeAreaView>
+
+      <BottomSheet isOpen={showTwoFAModal} onClose={handleClose2FA} snapPct={0.7}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={12}
+        >
+          {renderTwoFAContent()}
+        </KeyboardAvoidingView>
+      </BottomSheet>
+    </>
   );
 }
 
@@ -343,6 +519,58 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: Typography.size.lg,
+    fontWeight: '600',
+  },
+  twoFAContent: {
+    gap: Spacing.md,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sheetCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  twoFATitle: {
+    fontSize: Typography.size.lg,
+    fontWeight: '600',
+  },
+  twoFASubtitle: {
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+  },
+  otpRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    justifyContent: 'space-between',
+  },
+  otpInput: {
+    width: 44,
+    height: 52,
+    borderWidth: 1,
+    borderRadius: Radii.md,
+    fontSize: Typography.size.md,
+  },
+  twoFAActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  twoFAButton: {
+    flex: 1,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  twoFAButtonText: {
+    fontSize: Typography.size.md,
     fontWeight: '600',
   },
 });

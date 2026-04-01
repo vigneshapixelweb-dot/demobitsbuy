@@ -65,7 +65,7 @@ export const AppColors = {
     primaryAlt: '#026D58',
     onPrimary: '#FFFFFF',
     accent: '#3DFFDC',
-    alert: '#3DFFDC',
+    alert: '#d5551f',
     checkbox: '#0065531A',
     transparent: 'transparent',
     gradients: {
@@ -87,7 +87,7 @@ export const AppColors = {
     primaryAlt: '#026D58',
     onPrimary: '#FFFFFF',
     accent: '#006553',
-    alert: '#026D58',
+    alert: '#d5551f',
     checkbox: '#0065531A',
     transparent: 'transparent',
     gradients: {

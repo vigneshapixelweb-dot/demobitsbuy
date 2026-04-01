@@ -37,6 +37,15 @@ import {
   generateGoogleSecret,
   verifyGoogleSecret,
 } from "@/services/auth/google-2fa";
+import {
+  disableEmail2FA,
+  enableEmail2FA,
+  resendEnableEmail2FA,
+  requestDisableEmail2FAOtp,
+  verifyEnableEmail2FA,
+} from "@/services/auth/email-2fa";
+import { fetchSecurityStatus } from "@/services/auth/security-status";
+import { changePassword, requestChangePasswordOtp } from "@/services/auth/change-password";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 const OTP_LENGTH = 6;
@@ -116,6 +125,12 @@ export default function SecurityScreen() {
   const [googleSecret, setGoogleSecret] = useState("");
   const [googleQrUri, setGoogleQrUri] = useState<string | null>(null);
   const [isGoogleBusy, setIsGoogleBusy] = useState(false);
+  const [isEmail2FAEnabled, setIsEmail2FAEnabled] = useState(false);
+  const [email2FAFlow, setEmail2FAFlow] = useState<"enable" | "disable" | null>(null);
+  const [email2FAError, setEmail2FAError] = useState("");
+  const [isEmailBusy, setIsEmailBusy] = useState(false);
+  const [passwordOtpError, setPasswordOtpError] = useState("");
+  const [isPasswordBusy, setIsPasswordBusy] = useState(false);
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [otpError, setOtpError] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
@@ -147,7 +162,34 @@ export default function SecurityScreen() {
     return () => clearInterval(timer);
   }, [showOtpModal, secondsLeft]);
 
+  useEffect(() => {
+    if (!showVerificationModal) {
+      setEmail2FAError("");
+      setEmail2FAFlow(null);
+      setIsEmailBusy(false);
+    }
+  }, [showVerificationModal]);
+
+  useEffect(() => {
+    if (!token) return;
+    let isActive = true;
+    const loadStatus = async () => {
+      const result = await fetchSecurityStatus(token);
+      if (!isActive || !result.success || !result.data) return;
+      setIsEmail2FAEnabled(result.data.email2FAEnabled);
+      setIsGoogle2FAEnabled(result.data.google2FAEnabled);
+    };
+    loadStatus();
+    return () => {
+      isActive = false;
+    };
+  }, [token]);
+
   const openOtpModal = async () => {
+    if (!isGoogle2FAEnabled && isEmail2FAEnabled) {
+      Alert.alert("Google Authenticator", "Disable Email 2FA to enable Google Authenticator.");
+      return;
+    }
     setShowOtpModal(true);
     setOtp(Array(OTP_LENGTH).fill(""));
     setOtpError("");
@@ -262,6 +304,103 @@ export default function SecurityScreen() {
   const resendLabel =
     secondsLeft === 0 ? "Generate Again" : `Generate Again (${secondsLeft}s)`;
 
+  const handleEmail2FAStart = async () => {
+    setEmail2FAError("");
+    if (isEmail2FAEnabled) {
+      setEmail2FAFlow("disable");
+      setIsEmailBusy(true);
+      const result = await requestDisableEmail2FAOtp(verificationEmail, token ?? undefined);
+      setIsEmailBusy(false);
+      if (!result.success) {
+        setEmail2FAError(result.message ?? "Unable to send disable code.");
+        Alert.alert("Email 2FA", result.message ?? "Unable to send disable code.");
+        return;
+      }
+      setShowVerificationModal(true);
+      return;
+    }
+
+    if (isGoogle2FAEnabled) {
+      const msg = "Disable Google Authenticator to enable Email 2FA.";
+      setEmail2FAError(msg);
+      Alert.alert("Email 2FA", msg);
+      return;
+    }
+
+    setEmail2FAFlow("enable");
+    setIsEmailBusy(true);
+    const result = await enableEmail2FA(token ?? undefined);
+    setIsEmailBusy(false);
+    if (!result.success) {
+      const msg = result.message ?? "Unable to enable Email 2FA.";
+      if (/already enabled/i.test(msg)) {
+        setIsEmail2FAEnabled(true);
+      }
+      setEmail2FAError(msg);
+      Alert.alert("Email 2FA", msg);
+      return;
+    }
+    setShowVerificationModal(true);
+  };
+
+  const handleEmail2FAConfirm = async (code: string) => {
+    if (!email2FAFlow) return;
+    setEmail2FAError("");
+    setIsEmailBusy(true);
+    const result =
+      email2FAFlow === "enable"
+        ? await verifyEnableEmail2FA(code, token ?? undefined)
+        : await disableEmail2FA(code, token ?? undefined);
+    setIsEmailBusy(false);
+    if (!result.success) {
+      setEmail2FAError(result.message ?? "Verification failed.");
+      return;
+    }
+    setIsEmail2FAEnabled(email2FAFlow === "enable");
+    setEmail2FAFlow(null);
+    setShowVerificationModal(false);
+    Alert.alert("Email 2FA", result.message ?? "Success.");
+  };
+
+  const handleEmail2FAResend = async () => {
+    if (email2FAFlow !== "enable") return;
+    setEmail2FAError("");
+    setIsEmailBusy(true);
+    const result = await resendEnableEmail2FA(token ?? undefined);
+    setIsEmailBusy(false);
+    if (!result.success) {
+      setEmail2FAError(result.message ?? "Unable to resend code.");
+    }
+  };
+
+  const handleRequestPasswordOtp = async () => {
+    setPasswordOtpError("");
+    setIsPasswordBusy(true);
+    const result = await requestChangePasswordOtp(token ?? undefined);
+    setIsPasswordBusy(false);
+    if (!result.success) {
+      setPasswordOtpError(result.message ?? "Unable to send OTP.");
+    }
+  };
+
+  const handleChangePassword = async (payload: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+    code: string;
+  }) => {
+    setPasswordOtpError("");
+    setIsPasswordBusy(true);
+    const result = await changePassword({ ...payload, token: token ?? undefined });
+    setIsPasswordBusy(false);
+    if (!result.success) {
+      setPasswordOtpError(result.message ?? "Unable to change password.");
+      return false;
+    }
+    Alert.alert("Password Changed", result.message ?? "Your login password has been updated.");
+    return true;
+  };
+
   const onCopyWallet = async () => {
     if (!googleSecret) return;
     try {
@@ -286,10 +425,10 @@ export default function SecurityScreen() {
       id: "email-verification",
       title: "Email Verification",
       description: "Verify your email to secure login, password recovery, and withdrawal confirmations.",
-      buttonLabel: "Change",
-      buttonTone: "primary",
+      buttonLabel: isEmail2FAEnabled ? "Disable" : "Enable",
+      buttonTone: isEmail2FAEnabled ? "danger" : "primary",
       Icon: EmailIcon,
-      onPress: () => setShowVerificationModal(true),
+      onPress: handleEmail2FAStart,
     },
   ];
 
@@ -399,20 +538,22 @@ export default function SecurityScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <Pressable
-          style={[styles.alertCard, { borderColor: alertBorder, backgroundColor: alertBg }]}
-          onPress={() => setShowProtectModal(true)}
-        >
-          <SecurityLevelIcon width={40} height={40} />
-          <View style={styles.alertTextWrap}>
-            <Text style={[styles.alertTitle, { color: textPrimary }]}>
-              You Security Level : Low
-            </Text>
-            <Text style={[styles.alertSubtitle, { color: textMuted }]}>
-              Protect your funds by improving account security
-            </Text>
-          </View>
-        </Pressable>
+        {!isGoogle2FAEnabled && !isEmail2FAEnabled ? (
+          <Pressable
+            style={[styles.alertCard, { borderColor: alertBorder, backgroundColor: alertBg }]}
+            onPress={() => setShowProtectModal(true)}
+          >
+            <SecurityLevelIcon width={40} height={40} />
+            <View style={styles.alertTextWrap}>
+              <Text style={[styles.alertTitle, { color: textPrimary }]}>
+                You Security Level : Low
+              </Text>
+              <Text style={[styles.alertSubtitle, { color: textMuted }]}>
+                Protect your funds by improving account security
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
 
         <View style={[styles.noteCard, { borderColor: noteBorder, backgroundColor: noteBg }]}
         >
@@ -470,6 +611,21 @@ export default function SecurityScreen() {
         handleOtpResend={handleOtpResend}
         handleOtpSubmit={handleOtpSubmit}
         openOtpModal={openOtpModal}
+        verificationTitle={isEmail2FAEnabled ? "Disable Email 2FA" : "Enable Email 2FA"}
+        verificationSubtitle={
+          isEmail2FAEnabled
+            ? "Enter the 6-digit code sent to your email to disable Email 2FA."
+            : "Enter the 6-digit code sent to your email to enable Email 2FA."
+        }
+        verificationConfirmLabel={isEmail2FAEnabled ? "Disable" : "Enable"}
+        verificationErrorMessage={email2FAError}
+        verificationBusy={isEmailBusy}
+        onVerificationConfirm={handleEmail2FAConfirm}
+        onVerificationResend={handleEmail2FAResend}
+        passwordOtpErrorMessage={passwordOtpError}
+        passwordBusy={isPasswordBusy}
+        onPasswordRequestOtp={handleRequestPasswordOtp}
+        onPasswordChange={handleChangePassword}
         AuthenticatorAppIcon={AuthenticatorAppIcon}
         styles={styles}
       />

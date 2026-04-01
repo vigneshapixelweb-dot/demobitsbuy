@@ -19,6 +19,7 @@ import {
 import CloseIcon from "@/assets/icons/security/close.svg";
 
 const OTP_LENGTH = 6;
+const PASSWORD_OTP_RESEND = 30;
 
 type PaletteSubset = {
   gradients: { button: readonly string[] };
@@ -60,6 +61,22 @@ type SecurityModalsProps = {
   handleOtpResend: () => void;
   handleOtpSubmit: () => void;
   openOtpModal: () => void;
+  verificationTitle?: string;
+  verificationSubtitle?: string;
+  verificationConfirmLabel?: string;
+  verificationErrorMessage?: string;
+  verificationBusy?: boolean;
+  onVerificationConfirm?: (code: string) => void;
+  onVerificationResend?: () => void;
+  passwordOtpErrorMessage?: string;
+  passwordBusy?: boolean;
+  onPasswordRequestOtp?: () => void;
+  onPasswordChange?: (payload: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+    code: string;
+  }) => Promise<boolean>;
   AuthenticatorAppIcon: React.ComponentType<{ width?: number; height?: number }>;
   styles: Record<string, any>;
 };
@@ -97,6 +114,17 @@ export default function SecurityModals({
   handleOtpResend,
   handleOtpSubmit,
   openOtpModal,
+  verificationTitle,
+  verificationSubtitle,
+  verificationConfirmLabel,
+  verificationErrorMessage,
+  verificationBusy,
+  onVerificationConfirm,
+  onVerificationResend,
+  passwordOtpErrorMessage,
+  passwordBusy,
+  onPasswordRequestOtp,
+  onPasswordChange,
   AuthenticatorAppIcon,
   styles,
 }: SecurityModalsProps) {
@@ -109,6 +137,7 @@ export default function SecurityModals({
   const [hideNewPassword, setHideNewPassword] = useState(true);
   const [hideConfirmPassword, setHideConfirmPassword] = useState(true);
   const [passwordError, setPasswordError] = useState("");
+  const [passwordOtpSeconds, setPasswordOtpSeconds] = useState(0);
   const verificationInputsRef = useRef<Array<TextInput | null>>([]);
 
   useEffect(() => {
@@ -126,7 +155,17 @@ export default function SecurityModals({
     setHideNewPassword(true);
     setHideConfirmPassword(true);
     setPasswordError("");
+    setVerificationOtp(Array(OTP_LENGTH).fill(""));
+    setPasswordOtpSeconds(0);
   }, [showLoginPasswordModal]);
+
+  useEffect(() => {
+    if (!showLoginPasswordModal || passwordOtpSeconds === 0) return;
+    const timer = setInterval(() => {
+      setPasswordOtpSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [showLoginPasswordModal, passwordOtpSeconds]);
 
   const handleVerificationChange = (value: string, index: number) => {
     if (verificationError) setVerificationError("");
@@ -184,22 +223,36 @@ export default function SecurityModals({
       return;
     }
     setVerificationError("");
+    if (onVerificationConfirm) {
+      onVerificationConfirm(code);
+      return;
+    }
     Alert.alert("Verified", "Security verification confirmed.");
     setShowVerificationModal(false);
   };
 
   const handleVerificationResend = () => {
+    if (onVerificationResend) {
+      onVerificationResend();
+      return;
+    }
     Alert.alert("Code Sent", `A code has been sent to ${verificationEmail}.`);
   };
 
   const closeLoginPasswordModal = () => {
     setShowLoginPasswordModal(false);
     setPasswordError("");
+    setVerificationOtp(Array(OTP_LENGTH).fill(""));
+    setPasswordOtpSeconds(0);
   };
 
-  const handleLoginPasswordConfirm = () => {
+  const handleLoginPasswordConfirm = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
       setPasswordError("Please fill all password fields.");
+      return;
+    }
+    if (!verificationOtp.join("")) {
+      setPasswordError("Please enter the OTP code.");
       return;
     }
     if (newPassword.length < 8) {
@@ -215,6 +268,18 @@ export default function SecurityModals({
       return;
     }
     setPasswordError("");
+    if (onPasswordChange) {
+      const ok = await onPasswordChange({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+        code: verificationOtp.join(""),
+      });
+      if (ok) {
+        setShowLoginPasswordModal(false);
+      }
+      return;
+    }
     setShowLoginPasswordModal(false);
     Alert.alert("Password Changed", "Your login password has been updated.");
   };
@@ -436,19 +501,27 @@ export default function SecurityModals({
               contentContainerStyle={styles.verificationCardScroll}
             >
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: textPrimary }]}>Security Verification</Text>
+                <Text style={[styles.modalTitle, { color: textPrimary }]}>
+                  {verificationTitle ?? "Security Verification"}
+                </Text>
                 <Pressable style={styles.modalClose} onPress={() => setShowVerificationModal(false)}>
                   <CloseIcon width={22} height={22} />
                 </Pressable>
               </View>
               <View style={styles.modalDivider} />
 
-              <Text style={[styles.verificationText, { color: textMuted }]}>
-                Enter the 6-digit code will be sent to{" "}
-                <Text style={[styles.verificationEmail, { color: textPrimary }]}>
-                  {verificationEmail}
+              {verificationSubtitle ? (
+                <Text style={[styles.verificationText, { color: textMuted }]}>
+                  {verificationSubtitle}
                 </Text>
-              </Text>
+              ) : (
+                <Text style={[styles.verificationText, { color: textMuted }]}>
+                  Enter the 6-digit code will be sent to{" "}
+                  <Text style={[styles.verificationEmail, { color: textPrimary }]}>
+                    {verificationEmail}
+                  </Text>
+                </Text>
+              )}
 
               <View style={styles.verificationOtpRow}>
                 {verificationOtp.map((digit, index) => (
@@ -472,11 +545,17 @@ export default function SecurityModals({
                 ))}
               </View>
 
-              {verificationError ? (
-                <Text style={[styles.errorText, { color: "#DE2E42" }]}>{verificationError}</Text>
+              {verificationError || verificationErrorMessage ? (
+                <Text style={[styles.errorText, { color: "#DE2E42" }]}>
+                  {verificationError || verificationErrorMessage}
+                </Text>
               ) : null}
 
-              <Pressable style={styles.verificationLink} onPress={handleVerificationResend}>
+              <Pressable
+                style={styles.verificationLink}
+                onPress={handleVerificationResend}
+                disabled={verificationBusy}
+              >
                 <Text style={[styles.resendLink, { color: palette.accent }]}>Get Code</Text>
               </Pressable>
 
@@ -493,9 +572,10 @@ export default function SecurityModals({
                 <Pressable
                   style={[styles.verificationButton, { backgroundColor: palette.primary }]}
                   onPress={handleVerificationConfirm}
+                  disabled={verificationBusy}
                 >
                   <Text style={[styles.verificationButtonText, { color: palette.onPrimary }]}>
-                    Confirm
+                    {verificationConfirmLabel ?? "Confirm"}
                   </Text>
                 </Pressable>
               </View>
@@ -561,6 +641,43 @@ export default function SecurityModals({
                 </Pressable>
               </View>
 
+              <Text style={[styles.passwordLabel, { color: textPrimary }]}>OTP Code</Text>
+              <View style={[styles.passwordField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}>
+                <TextInput
+                  style={[styles.passwordInput, { color: textPrimary }]}
+                  placeholder="Enter OTP code"
+                  value={verificationOtp.join("")}
+                  onChangeText={(value) => {
+                    const cleaned = value.replace(/\D/g, "").slice(0, OTP_LENGTH);
+                    const next = cleaned.split("");
+                    setVerificationOtp([
+                      ...next,
+                      ...Array(Math.max(0, OTP_LENGTH - next.length)).fill(""),
+                    ]);
+                    if (passwordError) setPasswordError("");
+                  }}
+                  keyboardType="number-pad"
+                  maxLength={OTP_LENGTH}
+                  placeholderTextColor={textMuted}
+                  returnKeyType="next"
+                />
+                <Pressable
+                  onPress={() => {
+                    if (passwordOtpSeconds > 0) return;
+                    if (onPasswordRequestOtp) onPasswordRequestOtp();
+                    else handleVerificationResend();
+                    setPasswordOtpSeconds(PASSWORD_OTP_RESEND);
+                  }}
+                  disabled={passwordBusy || passwordOtpSeconds > 0}
+                >
+                  <Text style={[styles.resendLink, { color: palette.accent }]}>
+                    {passwordOtpSeconds > 0
+                      ? `Resend (${passwordOtpSeconds}s)`
+                      : "Get OTP"}
+                  </Text>
+                </Pressable>
+              </View>
+
               <Text style={[styles.passwordLabel, { color: textPrimary }]}>New Password</Text>
               <View style={[styles.passwordField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}>
                 <TextInput
@@ -611,6 +728,11 @@ export default function SecurityModals({
               {passwordError ? (
                 <Text style={styles.passwordError}>{passwordError}</Text>
               ) : null}
+              {passwordOtpErrorMessage ? (
+                <Text style={[styles.errorText, { color: "#DE2E42" }]}>
+                  {passwordOtpErrorMessage}
+                </Text>
+              ) : null}
 
               <View style={styles.passwordActions}>
                 <Pressable
@@ -628,6 +750,7 @@ export default function SecurityModals({
                     { borderColor: palette.primary, backgroundColor: palette.primary },
                   ]}
                   onPress={handleLoginPasswordConfirm}
+                  disabled={passwordBusy}
                 >
                   <Text style={[styles.passwordActionText, { color: palette.onPrimary }]}>Confirm</Text>
                 </Pressable>

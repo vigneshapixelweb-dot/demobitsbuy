@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import ArrowLeft from "@/assets/icons/arrow-left.svg";
+import ArrowLeft from "@/assets/icons/arrow-left.svg";    
 import DrawerIcon from "@/assets/icons/drawer.svg";
 import { Radii } from "@/constants/radii";
 import { Spacing } from "@/constants/spacing";
