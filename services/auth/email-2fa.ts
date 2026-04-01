@@ -92,6 +92,7 @@ export const requestDisableEmail2FAOtp = async (
 ): Promise<ApiResult> => {
   const formData = new FormData();
   formData.append('email', email);
+  console.log('[email-2fa] disable-otp email', email);
   return postForm('disable-email-2fa-otp', formData, token);
 };
 

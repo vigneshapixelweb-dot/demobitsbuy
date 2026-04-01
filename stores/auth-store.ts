@@ -13,6 +13,7 @@ type AuthState = {
   error: string | null;
   token: string | null;
   user: unknown | null;
+  email: string | null;
   requires2FA: boolean;
   pendingTwoFAMethod: 'google' | 'email' | null;
   pendingUsernameEmail: string | null;
@@ -31,6 +32,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   token: null,
   user: null,
+  email: null,
   requires2FA: false,
   pendingTwoFAMethod: null,
   pendingUsernameEmail: null,
@@ -47,6 +49,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           pendingTwoFAMethod: result.twoFAMethod ?? 'google',
           pendingUsernameEmail: payload.usernameEmail,
           pendingToken: result.token ?? null,
+          email: payload.usernameEmail,
           error: null,
         });
         return false;
@@ -61,6 +64,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
         token: result.token ?? null,
         user: result.user ?? null,
+        email: payload.usernameEmail,
         error: null,
         requires2FA: false,
         pendingTwoFAMethod: null,
@@ -76,7 +80,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   verify2FA: async (code) => {
     set({ isLoading: true, error: null });
-    const { pendingToken, pendingTwoFAMethod, pendingUsernameEmail } = get();
+    const { pendingToken, pendingTwoFAMethod, pendingUsernameEmail, email } = get();
     try {
       if (pendingTwoFAMethod === 'email' && !pendingUsernameEmail) {
         set({ isLoading: false, error: "Missing username/email for verification." });
@@ -98,6 +102,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
         token: finalToken,
         user: result.user ?? null,
+        email: pendingUsernameEmail ?? email ?? null,
         error: null,
         requires2FA: false,
         pendingTwoFAMethod: null,
@@ -124,6 +129,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   logout: () => {
     clearAuthToken();
-    set({ token: null, user: null });
+    set({ token: null, user: null, email: null });
   },
 }));

@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -11,6 +11,8 @@ import { Spacing } from "@/constants/spacing";
 import { AppColors } from "@/constants/theme";
 import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useAuthStore } from "@/stores/auth-store";
+import { fetchLoginActivity } from "@/services/auth/login-activity";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 
@@ -33,6 +35,8 @@ export default function AccountActivityScreen() {
   const isDark = colorScheme === "dark";
   const palette = AppColors[colorScheme];
   const [activeTab, setActiveTab] = useState<TabKey>("login");
+  const token = useAuthStore((state) => state.token);
+  const [loginActivityData, setLoginActivityData] = useState<ActivityRecord[]>([]);
 
   const pageBackground = isDark ? "#020B09" : "#FFFFFF";
   const textPrimary = isDark ? palette.onPrimary : palette.text;
@@ -41,48 +45,29 @@ export default function AccountActivityScreen() {
   const fieldBorder = isDark ? "#275049" : "#D6D6D6";
   const subtleGlow = toGradient(["rgba(255, 255, 255, 0.04)", "rgba(102, 102, 102, 0)"]);
 
-  const loginActivity: ActivityRecord[] = [
-    {
-      id: "login-1",
-      device: "Chrome 120.0.0.0",
-      dateTime: "2024-10-23, 11:25:48",
-      location: "India",
-      ipAddress: "103.116.149.10",
-      source: "Windows 10",
-      actionLabel: "Logout",
-      actionColor: "#DE2E42",
-    },
-    {
-      id: "login-2",
-      device: "Chrome 120.0.0.0",
-      dateTime: "2024-10-23, 11:25:48",
-      location: "India",
-      ipAddress: "103.116.149.10",
-      source: "Windows 10",
-      actionLabel: "Logout",
-      actionColor: "#DE2E42",
-    },
-    {
-      id: "login-3",
-      device: "Chrome 120.0.0.0",
-      dateTime: "2024-10-23, 11:25:48",
-      location: "India",
-      ipAddress: "103.116.149.10",
-      source: "Windows 10",
-      actionLabel: "Logout",
-      actionColor: "#DE2E42",
-    },
-    {
-      id: "login-4",
-      device: "Chrome 120.0.0.0",
-      dateTime: "2024-10-23, 11:25:48",
-      location: "India",
-      ipAddress: "103.116.149.10",
-      source: "Windows 10",
-      actionLabel: "Logout",
-      actionColor: "#DE2E42",
-    },
-  ];
+  useEffect(() => {
+    if (!token) return;
+    let isActive = true;
+    const load = async () => {
+      const result = await fetchLoginActivity(token, 0, 10);
+      if (!isActive || !result.success || !result.data) return;
+      const mapped: ActivityRecord[] = result.data.activity.map((item) => ({
+        id: String(item.id),
+        device: item.logged_in_browser || item.logged_in_device || "Unknown Device",
+        dateTime: item.created_at,
+        location: item.logged_in_location || "Unknown",
+        ipAddress: item.logged_in_ip || "Unknown",
+        source: item.logged_in_os || "Unknown Platform",
+        actionLabel: item.status === 1 ? "Login" : "Logout",
+        actionColor: item.status === 1 ? palette.primary : "#DE2E42",
+      }));
+      setLoginActivityData(mapped);
+    };
+    load();
+    return () => {
+      isActive = false;
+    };
+  }, [token, palette.primary]);
 
   const securityActivity: ActivityRecord[] = [
     {
@@ -108,8 +93,8 @@ export default function AccountActivityScreen() {
   ];
 
   const records = useMemo(
-    () => (activeTab === "login" ? loginActivity : securityActivity),
-    [activeTab],
+    () => (activeTab === "login" ? loginActivityData : securityActivity),
+    [activeTab, loginActivityData, securityActivity],
   );
 
   return (

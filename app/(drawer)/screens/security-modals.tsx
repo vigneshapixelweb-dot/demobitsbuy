@@ -33,12 +33,14 @@ type SecurityModalsProps = {
   showProtectModal: boolean;
   showVerificationModal: boolean;
   showLoginPasswordModal: boolean;
+  showAntiPhishingModal: boolean;
   isGoogle2FAEnabled: boolean;
   isGoogleBusy: boolean;
   setShowOtpModal: (value: boolean) => void;
   setShowProtectModal: (value: boolean) => void;
   setShowVerificationModal: (value: boolean) => void;
   setShowLoginPasswordModal: (value: boolean) => void;
+  setShowAntiPhishingModal: (value: boolean) => void;
   fieldBg: string;
   fieldBorder: string;
   textPrimary: string;
@@ -77,6 +79,14 @@ type SecurityModalsProps = {
     confirmPassword: string;
     code: string;
   }) => Promise<boolean>;
+  antiPhishingCode: string;
+  antiPhishingOtp: string;
+  onAntiPhishingOtpChange: (value: string) => void;
+  antiPhishingBusy?: boolean;
+  onAntiPhishingRequestOtp?: () => void;
+  onAntiPhishingCodeChange: (value: string) => void;
+  antiPhishingError: string;
+  onAntiPhishingConfirm: () => void;
   AuthenticatorAppIcon: React.ComponentType<{ width?: number; height?: number }>;
   styles: Record<string, any>;
 };
@@ -86,12 +96,14 @@ export default function SecurityModals({
   showProtectModal,
   showVerificationModal,
   showLoginPasswordModal,
+  showAntiPhishingModal,
   isGoogle2FAEnabled,
   isGoogleBusy,
   setShowOtpModal,
   setShowProtectModal,
   setShowVerificationModal,
   setShowLoginPasswordModal,
+  setShowAntiPhishingModal,
   fieldBg,
   fieldBorder,
   textPrimary,
@@ -125,6 +137,14 @@ export default function SecurityModals({
   passwordBusy,
   onPasswordRequestOtp,
   onPasswordChange,
+  antiPhishingCode,
+  antiPhishingOtp,
+  onAntiPhishingOtpChange,
+  antiPhishingBusy,
+  onAntiPhishingRequestOtp,
+  onAntiPhishingCodeChange,
+  antiPhishingError,
+  onAntiPhishingConfirm,
   AuthenticatorAppIcon,
   styles,
 }: SecurityModalsProps) {
@@ -478,6 +498,92 @@ export default function SecurityModals({
             </Pressable>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={showAntiPhishingModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAntiPhishingModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowAntiPhishingModal(false)}
+          />
+          <View style={[styles.modalCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: textPrimary }]}>
+                Enable Anti-Phishing
+              </Text>
+              <Pressable style={styles.modalClose} onPress={() => setShowAntiPhishingModal(false)}>
+                <CloseIcon width={22} height={22} />
+              </Pressable>
+            </View>
+
+            <Text style={[styles.passwordLabel, { color: textPrimary, marginTop: 12 ,marginBottom: 8}]}>
+              Enable Anti-Phishing Code
+            </Text>
+            <View style={[styles.passwordField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}>
+              <TextInput
+                style={[styles.passwordInput, { color: textPrimary }]}
+                placeholder="Please set your anti-phishing code"
+                value={antiPhishingCode}
+                onChangeText={(value) => onAntiPhishingCodeChange(value)}
+                placeholderTextColor={textMuted}
+                returnKeyType="done"
+              />
+            </View>
+            <Text style={[styles.passwordLabel, { color: textPrimary }]}>OTP Code</Text>
+            <View style={[styles.passwordField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}>
+              <TextInput
+                style={[styles.passwordInput, { color: textPrimary }]}
+                placeholder="Enter OTP code"
+                value={antiPhishingOtp}
+                onChangeText={(value) => onAntiPhishingOtpChange(value)}
+                placeholderTextColor={textMuted}
+                keyboardType="number-pad"
+                returnKeyType="done"
+              />
+              <Pressable
+                onPress={onAntiPhishingRequestOtp}
+                disabled={antiPhishingBusy}
+              >
+                <Text style={[styles.resendLink, { color: palette.accent }]}>Get OTP</Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.passwordInput, { color: textMuted, marginTop: 8, marginBottom: 16 }]}>
+              Please enter 1 to 8 alpha-numeric characters. Do not use commonly used passwords.
+            </Text>
+            {antiPhishingError ? (
+              <Text style={[styles.errorText, { color: "#DE2E42" }]}>{antiPhishingError}</Text>
+            ) : null}
+
+            <View style={styles.verificationButtons}>
+              <Pressable
+                style={[
+                  styles.verificationButton,
+                  { borderWidth: 1, borderColor: fieldBorder, backgroundColor: fieldBg },
+                ]}
+                onPress={() => setShowAntiPhishingModal(false)}
+              >
+                <Text style={[styles.verificationButtonText, { color: textPrimary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.verificationButton, { backgroundColor: palette.primary }]}
+                onPress={onAntiPhishingConfirm}
+                disabled={antiPhishingBusy}
+              >
+                <Text style={[styles.verificationButtonText, { color: palette.onPrimary }]}>
+                  Confirm
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal

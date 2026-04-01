@@ -46,6 +46,7 @@ import {
 } from "@/services/auth/email-2fa";
 import { fetchSecurityStatus } from "@/services/auth/security-status";
 import { changePassword, requestChangePasswordOtp } from "@/services/auth/change-password";
+import { enableAntiPhishing, requestAntiPhishingOtp } from "@/services/auth/anti-phishing";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 const OTP_LENGTH = 6;
@@ -121,6 +122,7 @@ export default function SecurityScreen() {
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showLoginPasswordModal, setShowLoginPasswordModal] = useState(false);
+  const [showAntiPhishingModal, setShowAntiPhishingModal] = useState(false);
   const [isGoogle2FAEnabled, setIsGoogle2FAEnabled] = useState(false);
   const [googleSecret, setGoogleSecret] = useState("");
   const [googleQrUri, setGoogleQrUri] = useState<string | null>(null);
@@ -131,6 +133,10 @@ export default function SecurityScreen() {
   const [isEmailBusy, setIsEmailBusy] = useState(false);
   const [passwordOtpError, setPasswordOtpError] = useState("");
   const [isPasswordBusy, setIsPasswordBusy] = useState(false);
+  const [antiPhishingCode, setAntiPhishingCode] = useState("");
+  const [antiPhishingError, setAntiPhishingError] = useState("");
+  const [antiPhishingOtp, setAntiPhishingOtp] = useState("");
+  const [antiPhishingBusy, setAntiPhishingBusy] = useState(false);
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [otpError, setOtpError] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
@@ -149,7 +155,7 @@ export default function SecurityScreen() {
   const noteBorder = "#F3BA2F";
   const noteBg = isDark ? withAlpha("#F3BA2F", 0.12) : "#FFF8E6";
   const AuthenticatorAppIcon = isDark ? AuthenticatorAppDark : AuthenticatorAppLight;
-  const verificationEmail = "jakeperalta@gmail.com";
+  const verificationEmail = useAuthStore((state) => state.email) ?? "unknown@email.com";
   const qrSeed = googleSecret || verificationEmail || "";
 
   const qrMatrix = useMemo(() => buildPseudoQrMatrix(qrSeed), [qrSeed]);
@@ -452,7 +458,11 @@ export default function SecurityScreen() {
       buttonLabel: "Set Up",
       buttonTone: "primary",
       Icon: AntiCodeIcon,
-      onPress: () => Alert.alert("Anti-Phishing Code", "Setup flow coming soon."),
+      onPress: () => {
+        setAntiPhishingError("");
+        setAntiPhishingCode("");
+        setShowAntiPhishingModal(true);
+      },
     },
     {
       id: "login-password",
@@ -583,12 +593,14 @@ export default function SecurityScreen() {
         showProtectModal={showProtectModal}
         showVerificationModal={showVerificationModal}
         showLoginPasswordModal={showLoginPasswordModal}
+        showAntiPhishingModal={showAntiPhishingModal}
         isGoogle2FAEnabled={isGoogle2FAEnabled}
         isGoogleBusy={isGoogleBusy}
         setShowOtpModal={setShowOtpModal}
         setShowProtectModal={setShowProtectModal}
         setShowVerificationModal={setShowVerificationModal}
         setShowLoginPasswordModal={setShowLoginPasswordModal}
+        setShowAntiPhishingModal={setShowAntiPhishingModal}
         fieldBg={fieldBg}
         fieldBorder={fieldBorder}
         textPrimary={textPrimary}
@@ -626,6 +638,50 @@ export default function SecurityScreen() {
         passwordBusy={isPasswordBusy}
         onPasswordRequestOtp={handleRequestPasswordOtp}
         onPasswordChange={handleChangePassword}
+        antiPhishingCode={antiPhishingCode}
+        antiPhishingOtp={antiPhishingOtp}
+        onAntiPhishingOtpChange={setAntiPhishingOtp}
+        antiPhishingBusy={antiPhishingBusy}
+        onAntiPhishingRequestOtp={async () => {
+          setAntiPhishingError("");
+          setAntiPhishingBusy(true);
+          const result = await requestAntiPhishingOtp(token ?? undefined);
+          setAntiPhishingBusy(false);
+          if (!result.success) {
+            setAntiPhishingError(result.message ?? "Unable to send OTP.");
+          }
+        }}
+        onAntiPhishingCodeChange={(value) => {
+          if (antiPhishingError) setAntiPhishingError("");
+          setAntiPhishingCode(value);
+        }}
+        antiPhishingError={antiPhishingError}
+        onAntiPhishingConfirm={async () => {
+          if (!antiPhishingCode.trim()) {
+            setAntiPhishingError("Please enter an anti-phishing code.");
+            return;
+          }
+          if (!antiPhishingOtp.trim()) {
+            setAntiPhishingError("Please enter the OTP code.");
+            return;
+          }
+          setAntiPhishingError("");
+          setAntiPhishingBusy(true);
+          const result = await enableAntiPhishing(
+            antiPhishingCode.trim(),
+            antiPhishingOtp.trim(),
+            token ?? undefined
+          );
+          setAntiPhishingBusy(false);
+          if (!result.success) {
+            setAntiPhishingError(result.message ?? "Unable to enable anti-phishing.");
+            return;
+          }
+          setShowAntiPhishingModal(false);
+          setAntiPhishingCode("");
+          setAntiPhishingOtp("");
+          Alert.alert("Anti-Phishing Code", result.message ?? "Anti-phishing enabled.");
+        }}
         AuthenticatorAppIcon={AuthenticatorAppIcon}
         styles={styles}
       />
