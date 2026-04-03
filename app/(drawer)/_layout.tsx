@@ -1,9 +1,10 @@
 import { Drawer } from "expo-router/drawer";
 import { useRouter, usePathname } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { DrawerContentScrollView, type DrawerContentComponentProps } from "@react-navigation/drawer";
+import { SvgUri } from "react-native-svg";
 
 import CheckIcon from "@/assets/icons/check.svg";
 import HistoryDark from "@/assets/icons/Drawer/History_dark.svg";
@@ -32,6 +33,7 @@ import { Spacing } from "@/constants/spacing";
 import { AppColors } from "@/constants/theme";
 import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useAuthStore } from "@/stores/auth-store";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 
@@ -52,6 +54,15 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   const colorScheme = useColorScheme() ?? "dark";
   const isDark = colorScheme === "dark";
   const palette = AppColors[colorScheme];
+  const token = useAuthStore((state) => state.token);
+  const profile = useAuthStore((state) => state.profile);
+  const email = useAuthStore((state) => state.email);
+  const refreshUserDetails = useAuthStore((state) => state.refreshUserDetails);
+
+  useEffect(() => {
+    if (!token) return;
+    refreshUserDetails();
+  }, [token, refreshUserDetails]);
 
   const items: DrawerItem[] = [
     {
@@ -153,6 +164,17 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   const textMuted = palette.textMuted;
   const accent = palette.primary;
   const subtleGlow = toGradient(["rgba(255, 255, 255, 0.04)", "rgba(102, 102, 102, 0)"]);
+  const displayName =
+    profile?.fullName ||
+    profile?.nickname ||
+    profile?.username ||
+    email ||
+    "User";
+  const displayEmail = profile?.email || email || "—";
+  const avatarInitial = displayName.trim().charAt(0).toUpperCase() || "U";
+  const showVerifiedBadge = profile?.isVerified === true;
+  const avatarUri = profile?.avatarUrl ?? null;
+  const isSvgAvatar = avatarUri ? avatarUri.toLowerCase().includes(".svg") : false;
 
   const isRouteActive = (item: DrawerItem) => {
     if (!item.match || !pathname) return false;
@@ -189,22 +211,32 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         <View style={styles.profileRow}>
           <View style={styles.avatarWrap}>
             <View style={[styles.avatarRing, { backgroundColor: accent }]}>
-              <Text style={styles.avatarInitial}>J</Text>
+              {avatarUri ? (
+                isSvgAvatar ? (
+                  <SvgUri uri={avatarUri} width={56} height={56} />
+                ) : (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                )
+              ) : (
+                <Text style={styles.avatarInitial}>{avatarInitial}</Text>
+              )}
             </View>
           </View>
           <View style={styles.profileTextWrap}>
             <View style={styles.profileNameRow}>
               <Text style={[styles.profileName, { color: textPrimary }]}
               >
-                Johntestdemo
+                {displayName}
               </Text>
-              <View style={[styles.verifyBadge, { backgroundColor: accent }]}>
-                <CheckIcon width={12} height={12} color={palette.onPrimary} />
-              </View>
+              {showVerifiedBadge ? (
+                <View style={[styles.verifyBadge, { backgroundColor: accent }]}>
+                  <CheckIcon width={12} height={12} color={palette.onPrimary} />
+                </View>
+              ) : null}
             </View>
             <Text style={[styles.profileEmail, { color: textMuted }]}
             >
-              Johntestdemo@gmail.com
+              {displayEmail}
             </Text>
           </View>
         </View>
@@ -296,6 +328,7 @@ export default function DrawerLayout() {
       <Drawer.Screen name="profile" options={{ title: "Profile" }} />
       <Drawer.Screen name="security" options={{ title: "Security" }} />
       <Drawer.Screen name="account-activity" options={{ title: "Account Activity" }} />
+      <Drawer.Screen name="chat" options={{ title: "Chat" }} />
       <Drawer.Screen name="verifyaccount" options={{ title: "Verify Account" }} />
       <Drawer.Screen name="kyc-verification" options={{ title: "KYC Verification" }} />
       <Drawer.Screen name="support" options={{ title: "Support" }} />
@@ -338,6 +371,11 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   avatarInitial: {
     fontFamily: "Geist-Bold",

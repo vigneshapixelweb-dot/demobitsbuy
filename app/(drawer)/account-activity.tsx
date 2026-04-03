@@ -13,6 +13,7 @@ import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useAuthStore } from "@/stores/auth-store";
 import { fetchLoginActivity } from "@/services/auth/login-activity";
+import { fetchDeviceActivity } from "@/services/auth/device-activity";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 
@@ -37,6 +38,7 @@ export default function AccountActivityScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("login");
   const token = useAuthStore((state) => state.token);
   const [loginActivityData, setLoginActivityData] = useState<ActivityRecord[]>([]);
+  const [deviceActivityData, setDeviceActivityData] = useState<ActivityRecord[]>([]);
 
   const pageBackground = isDark ? "#020B09" : "#FFFFFF";
   const textPrimary = isDark ? palette.onPrimary : palette.text;
@@ -69,6 +71,30 @@ export default function AccountActivityScreen() {
     };
   }, [token, palette.primary]);
 
+  useEffect(() => {
+    if (!token) return;
+    let isActive = true;
+    const load = async () => {
+      const result = await fetchDeviceActivity(token, 0, 10);
+      if (!isActive || !result.success || !result.data || !result.data.activity) return;
+      const mapped: ActivityRecord[] = result.data.activity.map((item) => ({
+        id: String(item.id),
+        device: item.device || item.device_type || "Unknown Device",
+        dateTime: item.created_at ?? "Unknown",
+        location: item.location || "Unknown",
+        ipAddress: item.ip_address || "Unknown",
+        source: item.device_type || "Device Activity",
+        actionLabel: item.status === 1 ? "Active" : "Inactive",
+        actionColor: item.status === 1 ? palette.primary : "#DE2E42",
+      }));
+      setDeviceActivityData(mapped);
+    };
+    load();
+    return () => {
+      isActive = false;
+    };
+  }, [token, palette.primary]);
+
   const securityActivity: ActivityRecord[] = [
     {
       id: "security-1",
@@ -93,8 +119,8 @@ export default function AccountActivityScreen() {
   ];
 
   const records = useMemo(
-    () => (activeTab === "login" ? loginActivityData : securityActivity),
-    [activeTab, loginActivityData, securityActivity],
+    () => (activeTab === "login" ? loginActivityData : deviceActivityData),
+    [activeTab, loginActivityData, deviceActivityData],
   );
 
   return (

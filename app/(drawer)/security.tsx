@@ -492,11 +492,7 @@ export default function SecurityScreen() {
       buttonLabel: "Delete",
       buttonTone: "danger",
       Icon: DeleteAccountIcon,
-      onPress: () =>
-        Alert.alert("Delete Account", "Are you sure you want to delete your account?", [
-          { text: "Cancel", style: "cancel" },
-          { text: "Delete", style: "destructive" },
-        ]),
+      onPress: () => router.push("/(drawer)/delete-account"),
     },
   ];
 

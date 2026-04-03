@@ -3,6 +3,7 @@ import ProfileLight from "@/assets/icons/Drawer/profile_light.svg";
 import ArrowLeft from "@/assets/icons/arrow-left.svg";
 import CalendarIcon from "@/assets/icons/calendar.svg";
 import CheckIcon from "@/assets/icons/check.svg";
+import CloseIcon from "@/assets/icons/security/close.svg";
 import { Radii } from "@/constants/radii";
 import { Spacing } from "@/constants/spacing";
 import { AppColors } from "@/constants/theme";
@@ -13,7 +14,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Image,
@@ -28,6 +29,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuthStore } from "@/stores/auth-store";
+import { updateProfileDetails } from "@/services/auth/update-profile";
+import { SvgUri } from "react-native-svg";
+import { fetchCountries, updateCountry, type Country } from "@/services/auth/country";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 
@@ -36,6 +41,9 @@ export default function MyProfileScreen() {
   const colorScheme = useColorScheme() ?? "dark";
   const isDark = colorScheme === "dark";
   const palette = AppColors[colorScheme];
+  const token = useAuthStore((state) => state.token);
+  const profile = useAuthStore((state) => state.profile);
+  const refreshUserDetails = useAuthStore((state) => state.refreshUserDetails);
 
   const [nickname, setNickname] = useState("");
   const [bio, setBio] = useState("");
@@ -43,6 +51,17 @@ export default function MyProfileScreen() {
   const [draftDob, setDraftDob] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarAsset, setAvatarAsset] = useState<{
+    uri: string;
+    name?: string;
+    type?: string;
+  } | null>(null);
+  const [hasSeededProfile, setHasSeededProfile] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [countries, setCountries] = useState<Country[]>([]);
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countryError, setCountryError] = useState("");
 
   const pageBackground = isDark ? "#020B09" : "#FFFFFF";
   const textPrimary = isDark ? palette.onPrimary : palette.text;
@@ -50,6 +69,86 @@ export default function MyProfileScreen() {
   const fieldBg = isDark ? "#021210" : "#FFFFFF";
   const fieldBorder = isDark ? "#275049" : "#D6D6D6";
   const subtleGlow = toGradient(["rgba(255, 255, 255, 0.04)", "rgba(102, 102, 102, 0)"]);
+  const displayName =
+    profile?.fullName ||
+    profile?.nickname ||
+    profile?.username ||
+    "User";
+  const avatarInitial = displayName.trim().charAt(0).toUpperCase() || "U";
+  const showVerifiedBadge = profile?.isVerified === true;
+  const isSvgAvatar = avatarUri ? avatarUri.toLowerCase().includes(".svg") : false;
+
+  const parseDob = (value?: string | null) => {
+    if (!value) return null;
+    const normalized = value.replace(/\//g, "-");
+    const direct = new Date(normalized);
+    if (!Number.isNaN(direct.getTime())) return direct;
+    const parts = normalized.split("-").map((part) => part.trim());
+    if (parts.length !== 3) return null;
+    const [first, second, third] = parts;
+    if (third.length === 4) {
+      const day = Number(first);
+      const month = Number(second);
+      const year = Number(third);
+      if (!Number.isNaN(day) && !Number.isNaN(month) && !Number.isNaN(year)) {
+        const parsed = new Date(year, month - 1, day);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    refreshUserDetails();
+  }, [token, refreshUserDetails]);
+
+  useEffect(() => {
+    if (!profile || hasSeededProfile) return;
+    setNickname(profile.nickname ?? profile.fullName ?? profile.username ?? "");
+    setBio(profile.bio ?? "");
+    const parsedDob = parseDob(profile.dob ?? undefined);
+    if (parsedDob) {
+      setDob(parsedDob);
+      setDraftDob(parsedDob);
+    }
+    if (profile.avatarUrl) {
+      setAvatarUri(profile.avatarUrl);
+    }
+    if (profile.countryId || profile.countryName) {
+      setSelectedCountry((prev) =>
+        prev ?? {
+          id: profile.countryId ?? 0,
+          name: profile.countryName ?? "Selected country",
+        },
+      );
+    }
+    setHasSeededProfile(true);
+  }, [profile, hasSeededProfile]);
+
+  useEffect(() => {
+    let isActive = true;
+    const load = async () => {
+      const result = await fetchCountries();
+      if (!isActive) return;
+      if (result.success && result.data?.countries) {
+        setCountries(result.data.countries);
+        setCountryError("");
+        if (profile?.countryId) {
+          const match = result.data.countries.find(
+            (item) => String(item.id) === String(profile.countryId),
+          );
+          if (match) setSelectedCountry(match);
+        }
+      } else {
+        setCountryError(result.message ?? "Unable to load countries.");
+      }
+    };
+    load();
+    return () => {
+      isActive = false;
+    };
+  }, [profile?.countryId]);
 
   const formattedDob = useMemo(() => {
     if (!dob) return "DD/MM/YYYY";
@@ -89,12 +188,17 @@ export default function MyProfileScreen() {
       const selected = result.assets?.[0];
       if (!selected?.uri) return;
       setAvatarUri(selected.uri);
+      setAvatarAsset({
+        uri: selected.uri,
+        name: selected.name ?? "profile.jpg",
+        type: selected.mimeType ?? "image/jpeg",
+      });
     } catch {
       Alert.alert("Upload failed", "Unable to open image picker.");
     }
   };
 
-  const onSubmit = () => {
+  const onSubmit = async () => {
     if (!nickname.trim()) {
       Alert.alert("Validation", "Please enter your nickname.");
       return;
@@ -103,8 +207,35 @@ export default function MyProfileScreen() {
       Alert.alert("Validation", "Please select your date of birth.");
       return;
     }
-
-    Alert.alert("Profile Updated", "Your profile has been submitted.");
+    if (!token) {
+      Alert.alert("Profile", "Please log in again to update your profile.");
+      return;
+    }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const result = await updateProfileDetails(token, {
+        username: nickname.trim(),
+        profileImage: avatarAsset,
+      });
+      if (!result.success) {
+        Alert.alert("Profile", result.message ?? "Profile update failed.");
+        return;
+      }
+      if (selectedCountry?.id) {
+        const countryResult = await updateCountry(token, selectedCountry.id);
+        if (!countryResult.success) {
+          Alert.alert("Profile", countryResult.message ?? "Country update failed.");
+        }
+      }
+      await refreshUserDetails();
+      Alert.alert("Profile Updated", result.message ?? "Your profile has been submitted.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Profile update failed.";
+      Alert.alert("Profile", message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -140,18 +271,24 @@ export default function MyProfileScreen() {
             <View style={styles.profileTopRow}>
               <View style={[styles.avatarWrap, { backgroundColor: palette.primary }]}>
                 {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                  isSvgAvatar ? (
+                    <SvgUri uri={avatarUri} width="100%" height="100%" />
+                  ) : (
+                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                  )
                 ) : (
-                  <Text style={styles.avatarFallback}>J</Text>
+                  <Text style={styles.avatarFallback}>{avatarInitial}</Text>
                 )}
               </View>
 
               <View style={styles.profileMeta}>
                 <View style={styles.nameRow}>
-                  <Text style={[styles.nameText, { color: textPrimary }]}>Johntestdemo</Text>
-                  <View style={[styles.verifyBadge, { backgroundColor: palette.primary }]}>
-                    <CheckIcon width={10} height={10} color={palette.onPrimary} />
-                  </View>
+                  <Text style={[styles.nameText, { color: textPrimary }]}>{displayName}</Text>
+                  {showVerifiedBadge ? (
+                    <View style={[styles.verifyBadge, { backgroundColor: palette.primary }]}>
+                      <CheckIcon width={10} height={10} color={palette.onPrimary} />
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={[styles.profileHint, { color: textMuted }]}>
                   Update your nickname and manage your account.
@@ -191,6 +328,21 @@ export default function MyProfileScreen() {
             <Text style={[styles.input, { color: textMuted }]}>{formattedDob}</Text>
             <CalendarIcon width={22} height={22} />
           </Pressable>
+
+          <Text style={[styles.label, { color: textPrimary }]}>Country</Text>
+          <Pressable
+            style={[styles.inputRow, { backgroundColor: fieldBg, borderColor: fieldBorder }]}
+            onPress={() => setShowCountryPicker(true)}
+          >
+            <Text style={[styles.input, { color: selectedCountry ? textPrimary : textMuted }]}>
+              {selectedCountry?.name ?? "Select country"}
+            </Text>
+          </Pressable>
+          {countryError ? (
+            <Text style={[styles.errorText, { color: palette.alert ?? "#DE2E42" }]}>
+              {countryError}
+            </Text>
+          ) : null}
 
           <Text style={[styles.label, { color: textPrimary }]}>Bio</Text>
           <TextInput
@@ -248,6 +400,58 @@ export default function MyProfileScreen() {
                   </Pressable>
                 </View>
               )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showCountryPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowCountryPicker(false)}>
+          <Pressable onPress={() => {}}>
+            <View style={[styles.modalCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: textPrimary }]}>Select Country</Text>
+                <Pressable
+                  style={styles.modalClose}
+                  onPress={() => setShowCountryPicker(false)}
+                >
+                  <CloseIcon width={22} height={22} />
+                </Pressable>
+              </View>
+              <ScrollView
+                contentContainerStyle={styles.countryList}
+                showsVerticalScrollIndicator={false}
+              >
+                {countries.map((country) => {
+                  const active = String(country.id) === String(selectedCountry?.id);
+                  return (
+                    <Pressable
+                      key={country.id}
+                      style={[
+                        styles.countryRow,
+                        { borderColor: fieldBorder },
+                        active && { borderColor: palette.primary },
+                      ]}
+                      onPress={() => {
+                        setSelectedCountry(country);
+                        setShowCountryPicker(false);
+                      }}
+                    >
+                      <Text style={[styles.countryName, { color: textPrimary }]}>{country.name}</Text>
+                      {active ? (
+                        <View style={[styles.countryBadge, { backgroundColor: palette.primary }]}>
+                          <CheckIcon width={10} height={10} color={palette.onPrimary} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
           </Pressable>
         </Pressable>
@@ -421,11 +625,61 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xxxl+Spacing.lg,
   },
   modalCard: {
     borderWidth: 1,
-    borderRadius: Radii.lg,
-    padding: Spacing.md,
+    borderRadius: Radii.xl,
+    padding: Spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.sm,
+  },
+  modalTitle: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.md,
+    lineHeight: Typography.line.md,
+  },
+  modalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: Radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countryList: {
+    gap: Spacing.xs,
+    paddingBottom: Spacing.sm,
+  },
+  countryRow: {
+    borderWidth: 1,
+    borderRadius: Radii.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  countryName: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+  },
+  countryBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: Radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.sm,
+    marginTop: 4,
   },
   modalActions: {
     flexDirection: "row",

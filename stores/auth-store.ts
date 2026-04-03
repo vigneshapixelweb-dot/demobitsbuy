@@ -6,6 +6,11 @@ import {
   verifyLogin2FA,
 } from '@/services/auth/auth-api';
 import { clearAuthToken, loadAuthToken, saveAuthToken } from '@/services/auth/auth-storage';
+import {
+  fetchUserDetails,
+  normalizeUserDetails,
+  type UserDetails,
+} from '@/services/auth/user-details';
 
 type AuthState = {
   isLoading: boolean;
@@ -13,6 +18,9 @@ type AuthState = {
   error: string | null;
   token: string | null;
   user: unknown | null;
+  profile: UserDetails | null;
+  profileLoading: boolean;
+  profileError: string | null;
   email: string | null;
   requires2FA: boolean;
   pendingTwoFAMethod: 'google' | 'email' | null;
@@ -23,6 +31,7 @@ type AuthState = {
   clearTwoFA: () => void;
   hydrate: () => Promise<void>;
   clearError: () => void;
+  refreshUserDetails: () => Promise<void>;
   logout: () => void;
 };
 
@@ -32,12 +41,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   error: null,
   token: null,
   user: null,
+  profile: null,
+  profileLoading: false,
+  profileError: null,
   email: null,
   requires2FA: false,
   pendingTwoFAMethod: null,
   pendingUsernameEmail: null,
   pendingToken: null,
   clearError: () => set({ error: null }),
+  refreshUserDetails: async () => {
+    const token = get().token;
+    if (!token) return;
+    set({ profileLoading: true, profileError: null });
+    try {
+      const result = await fetchUserDetails(token);
+      if (!result.success || !result.data) {
+        set({
+          profileLoading: false,
+          profileError: result.message ?? 'Unable to load profile details.',
+        });
+        return;
+      }
+      set({ profile: result.data, profileLoading: false, profileError: null });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load profile details.';
+      set({ profileLoading: false, profileError: message });
+    }
+  },
   login: async (payload) => {
     set({ isLoading: true, error: null });
     try {
@@ -60,10 +91,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       await saveAuthToken(result.token ?? null);
+      const normalized = result.user ? normalizeUserDetails(result.user) : null;
       set({
         isLoading: false,
         token: result.token ?? null,
         user: result.user ?? null,
+        profile: normalized ?? null,
         email: payload.usernameEmail,
         error: null,
         requires2FA: false,
@@ -98,10 +131,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       const finalToken = result.token ?? pendingToken ?? null;
       await saveAuthToken(finalToken);
+      const normalized = result.user ? normalizeUserDetails(result.user) : null;
       set({
         isLoading: false,
         token: finalToken,
         user: result.user ?? null,
+        profile: normalized ?? null,
         email: pendingUsernameEmail ?? email ?? null,
         error: null,
         requires2FA: false,
@@ -129,6 +164,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   logout: () => {
     clearAuthToken();
-    set({ token: null, user: null, email: null });
+    set({ token: null, user: null, profile: null, email: null });
   },
 }));
