@@ -62,6 +62,11 @@ export default function ChatScreen() {
   const isSvgAvatar = avatarUri ? avatarUri.toLowerCase().includes(".svg") : false;
 
   useEffect(() => {
+    if (!avatarUri || isSvgAvatar) return;
+    Image.prefetch(avatarUri).catch(() => {});
+  }, [avatarUri, isSvgAvatar]);
+
+  useEffect(() => {
     if (!resolvedTicketId) {
       setMessages([]);
       return;

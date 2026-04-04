@@ -53,14 +53,14 @@ const postForm = async <T = unknown>(
   const hasExplicitSuccess = isExplicitSuccess(statusFlag);
   const ok = response.ok && (hasExplicitSuccess || !hasExplicitFailure);
 
-  console.log("[country-api] response", {
-    path,
-    ok: response.ok,
-    status: response.status,
-    url: response.url,
-    redirected: response.redirected,
-    body: json,
-  });
+  // console.log("[country-api] response", {
+  //   path,
+  //   ok: response.ok,
+  //   status: response.status,
+  //   url: response.url,
+  //   redirected: response.redirected,
+  //   body: json,
+  // });
 
   return {
     success: ok,

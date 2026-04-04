@@ -100,6 +100,8 @@ export default function DashboardScreen() {
   const tabLayouts = useRef<{ x: number; width: number }[]>([]);
   const indicatorX = useRef(new Animated.Value(0)).current;
   const indicatorW = useRef(new Animated.Value(0)).current;
+  const cardFloat = useRef(new Animated.Value(0)).current;
+  const actionEntrance = useRef(ACTIONS.map(() => new Animated.Value(0))).current;
 
   const contentPadding = useMemo(
     () => ({
@@ -145,6 +147,31 @@ export default function DashboardScreen() {
     }).start();
   }, [selectedFilter, indicatorW, indicatorX]);
 
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(cardFloat, { toValue: 1, duration: 2400, useNativeDriver: true }),
+        Animated.timing(cardFloat, { toValue: 0, duration: 2400, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [cardFloat]);
+
+  useEffect(() => {
+    const entrance = Animated.stagger(
+      70,
+      actionEntrance.map((value) =>
+        Animated.timing(value, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: true,
+        }),
+      ),
+    );
+    entrance.start();
+  }, [actionEntrance]);
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: palette.background }]}
@@ -184,12 +211,26 @@ export default function DashboardScreen() {
         </View>
 
         {/* ── Balance Card ── */}
-        <View
+        <Animated.View
           style={[
             styles.balanceCard,
             {
               backgroundColor: cardBg,
               borderColor: cardBorder,
+              transform: [
+                {
+                  translateY: cardFloat.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -3],
+                  }),
+                },
+                {
+                  scale: cardFloat.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 1.01],
+                  }),
+                },
+              ],
             },
           ]}
         >
@@ -214,29 +255,47 @@ export default function DashboardScreen() {
 
           {/* Inset shadow overlay for dark */}
           {isDark ? <View style={styles.cardInsetShadow} /> : null}
-        </View>
+        </Animated.View>
 
         {/* ── Quick Actions ── */}
         <View style={styles.actionsRow}>
-          {ACTIONS.map((action) => {
+          {ACTIONS.map((action, index) => {
             const Icon = isDark ? action.dark : action.light;
             return (
-              <Pressable key={action.key} style={styles.actionItem}>
-                <View
-                  style={[
-                    styles.actionCircle,
-                    {
-                      backgroundColor: actionCircle,
-                      borderColor: isDark ? palette.border : palette.primaryAlt,
-                    },
-                  ]}
-                >
-                  <Icon width={24} height={24} />
-                </View>
-                <Text style={[styles.actionLabel, { color: palette.text }]}>
-                  {action.label}
-                </Text>
-              </Pressable>
+              <Animated.View
+                key={action.key}
+                style={[
+                  styles.actionItem,
+                  {
+                    opacity: actionEntrance[index],
+                    transform: [
+                      {
+                        translateY: actionEntrance[index].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [10, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Pressable>
+                  <View
+                    style={[
+                      styles.actionCircle,
+                      {
+                        backgroundColor: actionCircle,
+                        borderColor: isDark ? palette.border : palette.primaryAlt,
+                      },
+                    ]}
+                  >
+                    <Icon width={24} height={24} />
+                  </View>
+                  <Text style={[styles.actionLabel, { color: palette.text }]}>
+                    {action.label}
+                  </Text>
+                </Pressable>
+              </Animated.View>
             );
           })}
         </View>
@@ -546,7 +605,8 @@ const styles = StyleSheet.create({
     borderWidth: 0.7,
   },
   actionLabel: {
-    fontSize: Typography.size.sm,
+    marginTop: Spacing.xs,
+    fontSize: Typography.size.xs +1 ,
     fontWeight: "500",
     textAlign: "center",
   },

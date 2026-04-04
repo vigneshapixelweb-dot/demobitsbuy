@@ -68,7 +68,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
     {
       id: "home",
       label: "Home",
-      route: "/(drawer)/(tabs)/index",
+      route: "/(drawer)/(tabs)",
       match: ["/", "/index"],
       iconDark: HomeDark,
       iconLight: HomeLight,
@@ -176,6 +176,11 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   const avatarUri = profile?.avatarUrl ?? null;
   const isSvgAvatar = avatarUri ? avatarUri.toLowerCase().includes(".svg") : false;
 
+  useEffect(() => {
+    if (!avatarUri || isSvgAvatar) return;
+    Image.prefetch(avatarUri).catch(() => {});
+  }, [avatarUri, isSvgAvatar]);
+
   const isRouteActive = (item: DrawerItem) => {
     if (!item.match || !pathname) return false;
     if (item.id === "home") {
@@ -190,6 +195,11 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       return;
     }
     if (!item.route) return;
+    if (item.id === "home") {
+      props.navigation.closeDrawer();
+      router.replace(item.route);
+      return;
+    }
     props.navigation.closeDrawer();
     router.push(item.route);
   };

@@ -46,6 +46,8 @@ export default function MyProfileScreen() {
   const refreshUserDetails = useAuthStore((state) => state.refreshUserDetails);
 
   const [nickname, setNickname] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [bio, setBio] = useState("");
   const [dob, setDob] = useState<Date | null>(null);
   const [draftDob, setDraftDob] = useState(new Date());
@@ -78,6 +80,11 @@ export default function MyProfileScreen() {
   const showVerifiedBadge = profile?.isVerified === true;
   const isSvgAvatar = avatarUri ? avatarUri.toLowerCase().includes(".svg") : false;
 
+  useEffect(() => {
+    if (!avatarUri || isSvgAvatar) return;
+    Image.prefetch(avatarUri).catch(() => {});
+  }, [avatarUri, isSvgAvatar]);
+
   const parseDob = (value?: string | null) => {
     if (!value) return null;
     const normalized = value.replace(/\//g, "-");
@@ -105,7 +112,9 @@ export default function MyProfileScreen() {
 
   useEffect(() => {
     if (!profile || hasSeededProfile) return;
-    setNickname(profile.nickname ?? profile.fullName ?? profile.username ?? "");
+    setNickname(profile.nickname ?? profile.firstName ?? profile.fullName ?? profile.username ?? "");
+    setLastName(profile.lastName ?? "");
+    setPhoneNumber(profile.phone ?? "");
     setBio(profile.bio ?? "");
     const parsedDob = parseDob(profile.dob ?? undefined);
     if (parsedDob) {
@@ -216,11 +225,32 @@ export default function MyProfileScreen() {
     try {
       const result = await updateProfileDetails(token, {
         username: nickname.trim(),
+        lastName: lastName.trim() || undefined,
+        phoneNumber: phoneNumber.trim() || undefined,
         profileImage: avatarAsset,
       });
       if (!result.success) {
         Alert.alert("Profile", result.message ?? "Profile update failed.");
         return;
+      }
+      if (result.data) {
+        setNickname(result.data.username ?? nickname);
+        setLastName(result.data.lastName ?? lastName);
+        setPhoneNumber(result.data.phone ?? phoneNumber);
+        if (result.data.avatarUrl) {
+          setAvatarUri(result.data.avatarUrl);
+        }
+        if (result.data.countryId) {
+          const matched = countries.find(
+            (item) => String(item.id) === String(result.data?.countryId),
+          );
+          if (matched) setSelectedCountry(matched);
+        } else if (result.data.countryName) {
+          setSelectedCountry({
+            id: result.data.countryId ?? 0,
+            name: result.data.countryName,
+          });
+        }
       }
       if (selectedCountry?.id) {
         const countryResult = await updateCountry(token, selectedCountry.id);
@@ -315,6 +345,41 @@ export default function MyProfileScreen() {
               onChangeText={setNickname}
               placeholder="Enter your name"
               placeholderTextColor={textMuted}
+              returnKeyType="next"
+              style={[styles.input, { color: textPrimary }]}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: textPrimary }]}>Last Name</Text>
+          <View style={[styles.inputRow, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+            {isDark ? (
+              <ProfileDark width={20} height={20} style={styles.inputIcon} />
+            ) : (
+              <ProfileLight width={20} height={20} style={styles.inputIcon} />
+            )}
+            <TextInput
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder="Enter your last name"
+              placeholderTextColor={textMuted}
+              returnKeyType="next"
+              style={[styles.input, { color: textPrimary }]}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: textPrimary }]}>Phone Number</Text>
+          <View style={[styles.inputRow, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+            {isDark ? (
+              <ProfileDark width={20} height={20} style={styles.inputIcon} />
+            ) : (
+              <ProfileLight width={20} height={20} style={styles.inputIcon} />
+            )}
+            <TextInput
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              placeholder="Enter your phone number"
+              placeholderTextColor={textMuted}
+              keyboardType="phone-pad"
               returnKeyType="next"
               style={[styles.input, { color: textPrimary }]}
             />
@@ -569,19 +634,19 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.lg,
-    lineHeight: Typography.line.lg,
-    marginBottom: Spacing.sm,
-  },
-  label: {
-    fontFamily: "Geist-SemiBold",
     fontSize: Typography.size.md,
     lineHeight: Typography.line.md,
     marginBottom: Spacing.xs,
-    marginTop: Spacing.sm,
+  },
+  label: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+    marginBottom: 4,
+    marginTop: Spacing.xs,
   },
   inputRow: {
-    height: 58,
+    height: 50,
     borderWidth: 1,
     borderRadius: Radii.lg,
     flexDirection: "row",
@@ -594,31 +659,31 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontFamily: "Geist-Regular",
-    fontSize: Typography.size.sm,
-    lineHeight: Typography.line.sm,
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
   },
   bioInput: {
-    minHeight: 110,
+    minHeight: 86,
     borderWidth: 1,
     borderRadius: Radii.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     textAlignVertical: "top",
     fontFamily: "Geist-Regular",
-    fontSize: Typography.size.md,
-    lineHeight: Typography.line.md,
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
   },
   submitButton: {
-    marginTop: Spacing.lg,
-    height: 56,
+    marginTop: Spacing.md,
+    height: 50,
     borderRadius: Radii.lg,
     alignItems: "center",
     justifyContent: "center",
   },
   submitText: {
     fontFamily: "Geist-SemiBold",
-    fontSize: Typography.size.md,
-    lineHeight: Typography.line.lg,
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
   },
   modalBackdrop: {
     flex: 1,

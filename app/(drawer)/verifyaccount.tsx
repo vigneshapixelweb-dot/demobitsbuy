@@ -4,7 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -22,6 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import ArrowLeft from "@/assets/icons/arrow-left.svg";
 import CalendarIcon from "@/assets/icons/calendar.svg";
 import UploadIcon from "@/assets/icons/image_upload.svg";
+import CheckIcon from "@/assets/icons/check.svg";
 import CloseIcon from "@/assets/icons/security/close.svg";
 import AdvanceKycDark from "@/assets/icons/verifyaccount/advancekyc_dark.svg";
 import AdvanceKycLight from "@/assets/icons/verifyaccount/advancekyc_light.svg";
@@ -34,6 +35,16 @@ import { Spacing } from "@/constants/spacing";
 import { AppColors } from "@/constants/theme";
 import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useAuthStore } from "@/stores/auth-store";
+import {
+  addKycDetail,
+  addAdvancedKycDetail,
+  fetchAdvancedKycDetail,
+  fetchKycDetail,
+  type AdvancedKycDetail,
+  type KycDetail,
+  type KycDocument,
+} from "@/services/auth/kyc";
 
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 
@@ -62,9 +73,34 @@ export default function VerifyAccountScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [expiryDate, setExpiryDate] = useState<Date | null>(null);
   const [draftExpiryDate, setDraftExpiryDate] = useState(new Date());
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
+  const [documentType, setDocumentType] = useState("driving license");
+  const [showDocumentTypePicker, setShowDocumentTypePicker] = useState(false);
   const [frontDocumentName, setFrontDocumentName] = useState("");
   const [backDocumentName, setBackDocumentName] = useState("");
   const [advancedDocumentName, setAdvancedDocumentName] = useState("");
+  const [advancedAddress, setAdvancedAddress] = useState("");
+  const [advancedDocumentFile, setAdvancedDocumentFile] = useState<KycDocument | null>(null);
+  const [frontDocumentFile, setFrontDocumentFile] = useState<KycDocument | null>(null);
+  const [backDocumentFile, setBackDocumentFile] = useState<KycDocument | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [firstNameError, setFirstNameError] = useState("");
+  const [lastNameError, setLastNameError] = useState("");
+  const [documentNumberError, setDocumentNumberError] = useState("");
+  const [expiryDateError, setExpiryDateError] = useState("");
+  const [frontDocError, setFrontDocError] = useState("");
+  const [backDocError, setBackDocError] = useState("");
+  const [kycDetail, setKycDetail] = useState<KycDetail | null>(null);
+  const [kycStatusLabel, setKycStatusLabel] = useState("Not Submitted");
+  const [advancedKycDetail, setAdvancedKycDetail] = useState<AdvancedKycDetail | null>(null);
+  const [advancedKycStatusLabel, setAdvancedKycStatusLabel] = useState("Not Submitted");
+  const [advancedKycRemark, setAdvancedKycRemark] = useState("");
+  const token = useAuthStore((state) => state.token);
+  const profile = useAuthStore((state) => state.profile);
+
+  const documentTypes = ["driving license", "passport", "national id"];
 
   const pageBackground = isDark ? "#020B09" : "#FFFFFF";
   const textPrimary = isDark ? palette.onPrimary : palette.text;
@@ -121,7 +157,13 @@ export default function VerifyAccountScreen() {
       ],
       actionLabel: "Verify Now",
       Icon: isDark ? AdvanceKycDark : AdvanceKycLight,
-      onPress: () => setShowAdvancedModal(true),
+      onPress: () => {
+        if (advancedKycRemark && advancedKycStatusLabel !== "Completed") {
+          Alert.alert("Advanced KYC", advancedKycRemark);
+          return;
+        }
+        setShowAdvancedModal(true);
+      },
     },
   ];
 
@@ -136,7 +178,10 @@ export default function VerifyAccountScreen() {
     setShowDatePicker(true);
   };
 
-  const pickDocument = async (onPick: (fileName: string) => void) => {
+  const pickDocument = async (
+    onPick: (fileName: string) => void,
+    onFilePick: (file: KycDocument) => void,
+  ) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ["image/*", "application/pdf"],
@@ -146,12 +191,109 @@ export default function VerifyAccountScreen() {
 
       if (result.canceled) return;
       const selected = result.assets?.[0];
-      if (!selected?.name) return;
-      onPick(selected.name);
+      if (!selected?.uri) return;
+      onPick(selected.name ?? "document");
+      onFilePick({
+        uri: selected.uri,
+        name: selected.name ?? "document",
+        type: selected.mimeType ?? "application/octet-stream",
+      });
     } catch {
       Alert.alert("Upload failed", "Unable to open file picker. Please try again.");
     }
   };
+
+  const formatExpiryDate = (value: Date) => {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, "0");
+    const day = `${value.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const deriveFirstLast = () => {
+    const full = profile?.fullName?.trim() ?? "";
+    if (!full) return { first: "", last: "" };
+    const parts = full.split(" ").filter(Boolean);
+    return { first: parts[0] ?? "", last: parts.slice(1).join(" ") };
+  };
+
+  useEffect(() => {
+    if (!showBasicModal) return;
+    const derived = deriveFirstLast();
+    setFirstName(profile?.firstName ?? derived.first);
+    setLastName(profile?.lastName ?? derived.last);
+    setFirstNameError("");
+    setLastNameError("");
+    setDocumentNumberError("");
+    setExpiryDateError("");
+    setFrontDocError("");
+    setBackDocError("");
+  }, [showBasicModal, profile?.firstName, profile?.lastName]);
+
+  useEffect(() => {
+    let isActive = true;
+    const load = async () => {
+      if (!token) return;
+      const result = await fetchKycDetail(token);
+      if (!isActive) return;
+      if (result.success && result.data) {
+        setKycDetail(result.data);
+        const status = result.data.status;
+        const label =
+          status === 0
+            ? "Pending"
+            : status === 1
+              ? "Completed"
+              : status === 2
+                ? "Rejected"
+                : status === false
+                  ? "Not Submitted"
+                  : "Not Submitted";
+        setKycStatusLabel(label);
+      } else {
+        setKycDetail(null);
+        setKycStatusLabel("Not Submitted");
+      }
+    };
+    load();
+    return () => {
+      isActive = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let isActive = true;
+    const load = async () => {
+      if (!token) return;
+      const result = await fetchAdvancedKycDetail(token);
+      if (!isActive) return;
+      if (result.success && result.data) {
+        setAdvancedKycDetail(result.data);
+        const status = result.data.status;
+        const label =
+          status === 0
+            ? "Pending"
+            : status === 1
+              ? "Completed"
+              : status === 2
+                ? "Rejected"
+                : status === false
+                  ? "Not Submitted"
+                  : "Not Submitted";
+        setAdvancedKycStatusLabel(label);
+        setAdvancedKycRemark(result.data.remark ?? "");
+      } else {
+        setAdvancedKycDetail(null);
+        setAdvancedKycStatusLabel("Not Submitted");
+        const apiError = (result.raw as any)?.data?.error ?? "";
+        setAdvancedKycRemark(apiError || result.message || "");
+      }
+    };
+    load();
+    return () => {
+      isActive = false;
+    };
+  }, [token]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: pageBackground }]}>
@@ -171,7 +313,6 @@ export default function VerifyAccountScreen() {
           <Text style={[styles.headerTitle, { color: textPrimary }]}>Verify Account</Text>
           <View style={styles.headerSpacer} />
         </View>
-
         <Text style={[styles.title, { color: textPrimary }]}>Verify Your Personal Account</Text>
         <Text style={[styles.subtitle, { color: textMuted }]}>
           Click verify now to complete your verification and gain access to more features.
@@ -191,7 +332,54 @@ export default function VerifyAccountScreen() {
                   <Text style={[styles.tierTitle, { color: textPrimary }]}>{tier.title}</Text>
                   <Text style={[styles.tierSubtitle, { color: textMuted }]}>{tier.subtitle}</Text>
                 </View>
+                {tier.id === "basic" ? (
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      styles.statusBadgeSmall,
+                      {
+                        backgroundColor:
+                          kycStatusLabel === "Completed"
+                            ? "#1F9D55"
+                            : kycStatusLabel === "Rejected"
+                              ? "#DE2E42"
+                              : "#DFAE2B",
+                      },
+                    ]}
+                  >
+                    <Text style={styles.statusBadgeText}>{kycStatusLabel}</Text>
+                  </View>
+                ) : null}
+                {tier.id === "advanced" ? (
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      styles.statusBadgeSmall,
+                      {
+                        backgroundColor:
+                          advancedKycStatusLabel === "Completed"
+                            ? "#1F9D55"
+                            : advancedKycStatusLabel === "Rejected"
+                              ? "#DE2E42"
+                              : "#DFAE2B",
+                      },
+                    ]}
+                  >
+                    <Text style={styles.statusBadgeText}>{advancedKycStatusLabel}</Text>
+                  </View>
+                ) : null}
               </View>
+
+              {tier.id === "basic" && kycDetail?.remark ? (
+                <Text style={[styles.remarkText, { color: textMuted }]}>
+                  {kycDetail.remark}
+                </Text>
+              ) : null}
+              {tier.id === "advanced" && advancedKycRemark ? (
+                <Text style={[styles.remarkText, { color: textMuted }]}>
+                  {advancedKycRemark}
+                </Text>
+              ) : null}
 
               <View style={styles.tierDetails}>
                 {tier.rows.map((row) => (
@@ -235,17 +423,18 @@ export default function VerifyAccountScreen() {
             style={styles.modalKeyboardWrap}
           >
             <View style={[styles.modalCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
-              <ScrollView
-                contentContainerStyle={styles.modalContentScroll}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
+              
                 <View style={styles.modalHeader}>
                   <Text style={[styles.modalTitle, { color: textPrimary }]}>Basic KYC</Text>
                   <Pressable style={styles.modalClose} onPress={() => setShowBasicModal(false)}>
                     <CloseIcon width={22} height={22} />
                   </Pressable>
                 </View>
+                <ScrollView
+                contentContainerStyle={styles.modalContentScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={true}
+              >
                 <View style={styles.modalDivider} />
 
                 <Text style={[styles.modalSectionTitle, { color: textPrimary }]}>KYC Verification</Text>
@@ -255,11 +444,74 @@ export default function VerifyAccountScreen() {
                   trading environment.
                 </Text>
 
-                <Text style={[styles.modalLabel, { color: textPrimary }]}>Document Number</Text>
-                <View style={[styles.inputField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}>
-                  <Text style={[styles.inputPlaceholder, { color: textMuted }]}>Select</Text>
+                <Text style={[styles.modalLabel, { color: textPrimary }]}>First Name</Text>
+                <TextInput
+                  value={firstName}
+                  onChangeText={(value) => {
+                    setFirstName(value);
+                    if (firstNameError) setFirstNameError("");
+                  }}
+                  placeholder="Enter first name"
+                  placeholderTextColor={textMuted}
+                  style={[
+                    styles.textInput,
+                    { borderColor: fieldBorder, backgroundColor: fieldBg, color: textPrimary },
+                  ]}
+                />
+                {firstNameError ? (
+                  <Text style={[styles.errorText, { color: palette.alert ?? "#DE2E42" }]}>
+                    {firstNameError}
+                  </Text>
+                ) : null}
+
+                <Text style={[styles.modalLabel, { color: textPrimary }]}>Last Name</Text>
+                <TextInput
+                  value={lastName}
+                  onChangeText={(value) => {
+                    setLastName(value);
+                    if (lastNameError) setLastNameError("");
+                  }}
+                  placeholder="Enter last name"
+                  placeholderTextColor={textMuted}
+                  style={[
+                    styles.textInput,
+                    { borderColor: fieldBorder, backgroundColor: fieldBg, color: textPrimary },
+                  ]}
+                />
+                {lastNameError ? (
+                  <Text style={[styles.errorText, { color: palette.alert ?? "#DE2E42" }]}>
+                    {lastNameError}
+                  </Text>
+                ) : null}
+
+                <Text style={[styles.modalLabel, { color: textPrimary }]}>ID Type</Text>
+                <Pressable
+                  style={[styles.inputField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}
+                  onPress={() => setShowDocumentTypePicker(true)}
+                >
+                  <Text style={[styles.inputPlaceholder, { color: textPrimary }]}>{documentType}</Text>
                   <Ionicons name="chevron-down" size={18} color={textMuted} />
-                </View>
+                </Pressable>
+
+                <Text style={[styles.modalLabel, { color: textPrimary }]}>Document Number</Text>
+                <TextInput
+                  value={documentNumber}
+                  onChangeText={(value) => {
+                    setDocumentNumber(value);
+                    if (documentNumberError) setDocumentNumberError("");
+                  }}
+                  placeholder="Enter document number"
+                  placeholderTextColor={textMuted}
+                  style={[
+                    styles.textInput,
+                    { borderColor: fieldBorder, backgroundColor: fieldBg, color: textPrimary },
+                  ]}
+                />
+                {documentNumberError ? (
+                  <Text style={[styles.errorText, { color: palette.alert ?? "#DE2E42" }]}>
+                    {documentNumberError}
+                  </Text>
+                ) : null}
 
                 <Text style={[styles.modalLabel, { color: textPrimary }]}>Expire Date</Text>
                 <Pressable
@@ -271,6 +523,11 @@ export default function VerifyAccountScreen() {
                   </Text>
                   <CalendarIcon width={18} height={18} />
                 </Pressable>
+                {expiryDateError ? (
+                  <Text style={[styles.errorText, { color: palette.alert ?? "#DE2E42" }]}>
+                    {expiryDateError}
+                  </Text>
+                ) : null}
 
                 {showDatePicker ? (
                   <View
@@ -314,7 +571,7 @@ export default function VerifyAccountScreen() {
                 <Text style={[styles.modalLabel, { color: textPrimary }]}>ID Front Document</Text>
                 <Pressable
                   style={[styles.uploadField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}
-                  onPress={() => pickDocument(setFrontDocumentName)}
+                  onPress={() => pickDocument(setFrontDocumentName, setFrontDocumentFile)}
                 >
                   <UploadIcon width={34} height={34} />
                   <Text
@@ -324,11 +581,16 @@ export default function VerifyAccountScreen() {
                     {frontDocumentName || "Click to choose files"}
                   </Text>
                 </Pressable>
+                {frontDocError ? (
+                  <Text style={[styles.errorText, { color: palette.alert ?? "#DE2E42" }]}>
+                    {frontDocError}
+                  </Text>
+                ) : null}
 
                 <Text style={[styles.modalLabel, { color: textPrimary }]}>ID Back Document</Text>
                 <Pressable
                   style={[styles.uploadField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}
-                  onPress={() => pickDocument(setBackDocumentName)}
+                  onPress={() => pickDocument(setBackDocumentName, setBackDocumentFile)}
                 >
                   <UploadIcon width={34} height={34} />
                   <Text
@@ -338,6 +600,11 @@ export default function VerifyAccountScreen() {
                     {backDocumentName || "Click to choose files"}
                   </Text>
                 </Pressable>
+                {backDocError ? (
+                  <Text style={[styles.errorText, { color: palette.alert ?? "#DE2E42" }]}>
+                    {backDocError}
+                  </Text>
+                ) : null}
 
                 <View style={styles.modalActions}>
                   <Pressable
@@ -354,10 +621,82 @@ export default function VerifyAccountScreen() {
                   </Pressable>
                   <Pressable
                     style={[styles.modalButton, { backgroundColor: palette.primary }]}
-                    onPress={() => {
-                      setShowDatePicker(false);
-                      setShowBasicModal(false);
-                      Alert.alert("Submitted", "Basic KYC submitted.");
+                    onPress={async () => {
+                      if (!token) {
+                        Alert.alert("KYC", "Please login to continue.");
+                        return;
+                      }
+                      const countryValue =
+                        profile?.countryName ?? (profile?.countryId ? String(profile.countryId) : "");
+                      setFirstNameError("");
+                      setLastNameError("");
+                      setDocumentNumberError("");
+                      setExpiryDateError("");
+                      setFrontDocError("");
+                      setBackDocError("");
+
+                      let hasError = false;
+                      if (!firstName.trim()) {
+                        setFirstNameError("Please enter first name.");
+                        hasError = true;
+                      }
+                      if (!lastName.trim()) {
+                        setLastNameError("Please enter last name.");
+                        hasError = true;
+                      }
+                      if (!countryValue) {
+                        Alert.alert("KYC", "Please select country in your profile.");
+                        hasError = true;
+                      }
+                      if (!documentNumber.trim()) {
+                        setDocumentNumberError("Please enter document number.");
+                        hasError = true;
+                      }
+                      if (!expiryDate) {
+                        setExpiryDateError("Please select document expiry date.");
+                        hasError = true;
+                      }
+                      if (!frontDocumentFile) {
+                        setFrontDocError("Please upload front document.");
+                        hasError = true;
+                      }
+                      if (!backDocumentFile) {
+                        setBackDocError("Please upload back document.");
+                        hasError = true;
+                      }
+                      if (hasError) return;
+                      if (isSubmitting) return;
+                      setIsSubmitting(true);
+                      try {
+                        const result = await addKycDetail(token, {
+                          firstname: firstName.trim(),
+                          lastname: lastName.trim(),
+                          country: countryValue,
+                          documentType,
+                          documentNumber: documentNumber.trim(),
+                          documentExpiryDate: formatExpiryDate(expiryDate),
+                          idFrontDocument: frontDocumentFile,
+                          idBackDocument: backDocumentFile,
+                        });
+                        if (!result.success) {
+                          const fieldErrors = (result.raw as any)?.data ?? {};
+                          if (fieldErrors?.firstname) setFirstNameError(fieldErrors.firstname);
+                          if (fieldErrors?.lastname) setLastNameError(fieldErrors.lastname);
+                          if (fieldErrors?.document_number) {
+                            setDocumentNumberError(fieldErrors.document_number);
+                          }
+                          if (fieldErrors?.document_expiry_date) {
+                            setExpiryDateError(fieldErrors.document_expiry_date);
+                          }
+                          Alert.alert("KYC", result.message ?? "Unable to submit KYC.");
+                          return;
+                        }
+                        setShowDatePicker(false);
+                        setShowBasicModal(false);
+                        Alert.alert("Submitted", result.message ?? "Basic KYC submitted.");
+                      } finally {
+                        setIsSubmitting(false);
+                      }
                     }}
                   >
                     <Text style={[styles.modalButtonText, { color: palette.onPrimary }]}>Confirm</Text>
@@ -402,6 +741,8 @@ export default function VerifyAccountScreen() {
               <TextInput
                 placeholder="Address"
                 placeholderTextColor={textMuted}
+                value={advancedAddress}
+                onChangeText={setAdvancedAddress}
                 style={[
                   styles.textInput,
                   { borderColor: fieldBorder, backgroundColor: fieldBg, color: textPrimary },
@@ -411,7 +752,7 @@ export default function VerifyAccountScreen() {
               <Text style={[styles.modalLabel, { color: textPrimary }]}>Upload Document</Text>
               <Pressable
                 style={[styles.uploadField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}
-                onPress={() => pickDocument(setAdvancedDocumentName)}
+                onPress={() => pickDocument(setAdvancedDocumentName, setAdvancedDocumentFile)}
               >
                 <UploadIcon width={34} height={34} />
                 <Text
@@ -437,9 +778,35 @@ export default function VerifyAccountScreen() {
                 </Pressable>
                 <Pressable
                   style={[styles.modalButton, { backgroundColor: palette.primary }]}
-                  onPress={() => {
-                    setShowAdvancedModal(false);
-                    Alert.alert("Submitted", "Advanced KYC submitted.");
+                  onPress={async () => {
+                    if (!token) {
+                      Alert.alert("Advanced KYC", "Please login to continue.");
+                      return;
+                    }
+                    if (!advancedAddress.trim()) {
+                      Alert.alert("Advanced KYC", "Please enter address.");
+                      return;
+                    }
+                    if (!advancedDocumentFile) {
+                      Alert.alert("Advanced KYC", "Please upload address proof.");
+                      return;
+                    }
+                    if (isSubmitting) return;
+                    setIsSubmitting(true);
+                    try {
+                      const result = await addAdvancedKycDetail(token, {
+                        address: advancedAddress.trim(),
+                        addressProof: advancedDocumentFile,
+                      });
+                      if (!result.success) {
+                        Alert.alert("Advanced KYC", result.message ?? "Unable to submit.");
+                        return;
+                      }
+                      setShowAdvancedModal(false);
+                      Alert.alert("Submitted", result.message ?? "Advanced KYC submitted.");
+                    } finally {
+                      setIsSubmitting(false);
+                    }
                   }}
                 >
                   <Text style={[styles.modalButtonText, { color: palette.onPrimary }]}>Confirm</Text>
@@ -448,6 +815,51 @@ export default function VerifyAccountScreen() {
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDocumentTypePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDocumentTypePicker(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowDocumentTypePicker(false)} />
+          <View style={[styles.pickerCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: textPrimary }]}>Select ID Type</Text>
+              <Pressable style={styles.modalClose} onPress={() => setShowDocumentTypePicker(false)}>
+                <CloseIcon width={22} height={22} />
+              </Pressable>
+            </View>
+            <View style={styles.modalDivider} />
+            <ScrollView contentContainerStyle={styles.pickerList} showsVerticalScrollIndicator={false}>
+              {documentTypes.map((type) => {
+                const active = type === documentType;
+                return (
+                  <Pressable
+                    key={type}
+                    style={[
+                      styles.pickerRow,
+                      { borderColor: active ? palette.primary : fieldBorder },
+                    ]}
+                    onPress={() => {
+                      setDocumentType(type);
+                      setShowDocumentTypePicker(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerText, { color: textPrimary }]}>{type}</Text>
+                    {active ? (
+                      <View style={[styles.pickerBadge, { backgroundColor: palette.primary }]}>
+                        <CheckIcon width={10} height={10} color={palette.onPrimary} />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -502,6 +914,26 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.xs,
     lineHeight: Typography.line.xs,
     marginBottom: Spacing.lg,
+  },
+  statusBadge: {
+    borderRadius: Radii.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  statusBadgeSmall: {
+    marginLeft: "auto",
+    alignSelf: "flex-start",
+  },
+  statusBadgeText: {
+    fontFamily: "Geist-SemiBold",
+    fontSize: Typography.size.xs,
+    color: "#FFFFFF",
+  },
+  remarkText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.sm,
+    marginTop: Spacing.sm,
   },
   tierList: {
     gap: Spacing.lg,
@@ -689,6 +1121,43 @@ const styles = StyleSheet.create({
     fontFamily: "Geist-SemiBold",
     fontSize: Typography.size.md,
     lineHeight: Typography.line.md,
+  },
+  errorText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.sm,
+    marginTop: 4,
+  },
+  pickerCard: {
+    borderRadius: Radii.xl,
+    borderWidth: 1,
+    padding: Spacing.lg,
+  },
+  pickerList: {
+    gap: Spacing.sm,
+    paddingBottom: Spacing.sm,
+  },
+  pickerRow: {
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pickerText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.sm,
+    lineHeight: Typography.line.sm,
+    textTransform: "capitalize",
+  },
+  pickerBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: Radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
   },
   datePickerInlineCard: {
     borderRadius: Radii.xl,

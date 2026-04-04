@@ -10,6 +10,8 @@ type ApiResult<T = unknown> = {
 
 type UpdateProfilePayload = {
   username: string;
+  lastName?: string;
+  phoneNumber?: string;
   profileImage?: {
     uri: string;
     name?: string;
@@ -26,6 +28,12 @@ export async function updateProfileDetails(
 ): Promise<ApiResult<UserDetails>> {
   const formData = new FormData();
   formData.append('username', payload.username);
+  if (payload.lastName) {
+    formData.append('lastname', payload.lastName);
+  }
+  if (payload.phoneNumber) {
+    formData.append('phone_number', payload.phoneNumber);
+  }
 
   if (payload.profileImage?.uri) {
     formData.append('profile_image', {

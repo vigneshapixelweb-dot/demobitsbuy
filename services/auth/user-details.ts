@@ -10,6 +10,8 @@ type ApiResult<T = unknown> = {
 export type UserDetails = {
   id?: string | number | null;
   fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   username?: string | null;
   nickname?: string | null;
   email?: string | null;
@@ -65,6 +67,8 @@ const toBool = (value: unknown) => {
 export const normalizeUserDetails = (raw: unknown): UserDetails => {
   const profile = (raw ?? {}) as Record<string, unknown>;
   const fullName = normalizeFullName(profile);
+  const firstName = pickString(profile.first_name, profile.firstname, profile.fname);
+  const lastName = pickString(profile.last_name, profile.lastname, profile.lname);
   const username = pickString(profile.username, profile.user_name, profile.uname);
   const nickname = pickString(profile.nickname, profile.nick_name, profile.display_name);
   const email = pickString(profile.email, profile.user_email, profile.username_email, profile.login_email);
@@ -122,6 +126,8 @@ export const normalizeUserDetails = (raw: unknown): UserDetails => {
   return {
     id: (profile.id as string | number | null | undefined) ?? null,
     fullName,
+    firstName,
+    lastName,
     username,
     nickname,
     email,
