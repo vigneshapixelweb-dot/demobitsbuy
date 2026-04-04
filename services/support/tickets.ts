@@ -44,11 +44,22 @@ const postForm = async <T = unknown>(
     hasBody: Boolean(formData),
   });
 
-  const response = await fetch(`${API_BASE_URL}/${path}`, {
-    method: "POST",
-    headers: buildHeaders(token),
-    body: formData,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/${path}`, {
+      method: "POST",
+      headers: buildHeaders(token),
+      body: formData,
+    });
+  } catch (error) {
+    console.log("[support-api] network error", { path, error });
+    return {
+      success: false,
+      message: "Network request failed. Please check your connection.",
+      data: undefined,
+      raw: error,
+    };
+  }
 
   let json: any = null;
   try {
