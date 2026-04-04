@@ -20,13 +20,26 @@ export type SecurityStatus = {
 };
 
 export async function fetchSecurityStatus(token: string): Promise<ApiResult<SecurityStatus>> {
-  const response = await fetch(`${API_BASE_URL}/security-setting-status`, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      authorization: `Bearer ${token}`,
-    },
-  });
+  console.log('[security-status] request', { hasToken: Boolean(token), path: 'security-setting-status' });
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/security-setting-status`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (error) {
+    console.log('[security-status] network error', { error });
+    return {
+      success: false,
+      message: 'Network request failed. Please check your connection.',
+      data: undefined,
+      raw: error,
+    };
+  }
 
   let json: any = null;
   try {
@@ -45,6 +58,14 @@ export async function fetchSecurityStatus(token: string): Promise<ApiResult<Secu
       : data.anti_phishing_status
       ? Number(data.anti_phishing_status)
       : null;
+
+  console.log('[security-status] response', {
+    ok: response.ok,
+    status: response.status,
+    url: response.url,
+    redirected: response.redirected,
+    body: json,
+  });
 
   return {
     success: ok,

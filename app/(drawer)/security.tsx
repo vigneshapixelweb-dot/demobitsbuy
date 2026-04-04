@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     Pressable,
     ScrollView,
@@ -51,6 +52,12 @@ import { enableAntiPhishing, requestAntiPhishingOtp } from "@/services/auth/anti
 const toGradient = (colors: readonly string[]) => colors as [string, string, ...string[]];
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
+const extractFieldError = (raw: any): string | null => {
+  const data = raw?.data;
+  if (!data || typeof data !== "object") return null;
+  const values = Object.values(data).filter((value) => typeof value === "string" && value.trim());
+  return values.length > 0 ? String(values[0]) : null;
+};
 
 const buildPseudoQrMatrix = (seedText: string, size = 23) => {
   const matrix = Array.from({ length: size }, () => Array.from({ length: size }, () => false));
@@ -137,10 +144,14 @@ export default function SecurityScreen() {
   const [antiPhishingError, setAntiPhishingError] = useState("");
   const [antiPhishingOtp, setAntiPhishingOtp] = useState("");
   const [antiPhishingBusy, setAntiPhishingBusy] = useState(false);
+  const [antiPhishingStatus, setAntiPhishingStatus] = useState<number | string | boolean | null>(null);
+  const [antiPhishingOtpSeconds, setAntiPhishingOtpSeconds] = useState(0);
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [otpError, setOtpError] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const token = useAuthStore((state) => state.token);
+  const profile = useAuthStore((state) => state.profile);
+  const refreshUserDetails = useAuthStore((state) => state.refreshUserDetails);
 
   const inputsRef = useRef<Array<TextInput | null>>([]);
 
@@ -157,6 +168,11 @@ export default function SecurityScreen() {
   const AuthenticatorAppIcon = isDark ? AuthenticatorAppDark : AuthenticatorAppLight;
   const verificationEmail = useAuthStore((state) => state.email) ?? "unknown@email.com";
   const qrSeed = googleSecret || verificationEmail || "";
+  const antiPhishingCodeValue = profile?.antiPhishingCode ?? "";
+  const antiPhishingEnabled =
+    antiPhishingStatus === 1 ||
+    antiPhishingStatus === "1" ||
+    antiPhishingStatus === true;
 
   const qrMatrix = useMemo(() => buildPseudoQrMatrix(qrSeed), [qrSeed]);
 
@@ -167,6 +183,14 @@ export default function SecurityScreen() {
     }, 1000);
     return () => clearInterval(timer);
   }, [showOtpModal, secondsLeft]);
+
+  useEffect(() => {
+    if (!showAntiPhishingModal || antiPhishingOtpSeconds === 0) return;
+    const timer = setInterval(() => {
+      setAntiPhishingOtpSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [showAntiPhishingModal, antiPhishingOtpSeconds]);
 
   useEffect(() => {
     if (!showVerificationModal) {
@@ -184,12 +208,14 @@ export default function SecurityScreen() {
       if (!isActive || !result.success || !result.data) return;
       setIsEmail2FAEnabled(result.data.email2FAEnabled);
       setIsGoogle2FAEnabled(result.data.google2FAEnabled);
+      setAntiPhishingStatus(result.data.antiPhishingStatus ?? null);
     };
     loadStatus();
+    refreshUserDetails();
     return () => {
       isActive = false;
     };
-  }, [token]);
+  }, [token, refreshUserDetails]);
 
   const openOtpModal = async () => {
     if (!isGoogle2FAEnabled && isEmail2FAEnabled) {
@@ -455,12 +481,12 @@ export default function SecurityScreen() {
       id: "anti-phishing",
       title: "Anti-Phishing Code",
       description: "Create a personalized code that will appear in all BitsBuyss emails to protect you from phishing attempts.",
-      buttonLabel: "Set Up",
+      buttonLabel: antiPhishingEnabled ? "Change" : "Set Up",
       buttonTone: "primary",
       Icon: AntiCodeIcon,
       onPress: () => {
         setAntiPhishingError("");
-        setAntiPhishingCode("");
+        setAntiPhishingCode(antiPhishingEnabled ? antiPhishingCodeValue : "");
         setShowAntiPhishingModal(true);
       },
     },
@@ -499,6 +525,11 @@ export default function SecurityScreen() {
   const renderSetting = (item: SettingItem) => {
     const buttonBg = item.buttonTone === "danger" ? "#DE2E42" : palette.primary;
     const buttonTextColor = palette.onPrimary;
+    const isItemBusy =
+      (item.id === "google-auth" && isGoogleBusy) ||
+      (item.id === "email-verification" && isEmailBusy) ||
+      (item.id === "anti-phishing" && antiPhishingBusy) ||
+      (item.id === "login-password" && isPasswordBusy);
     return (
       <View key={item.id} style={[styles.settingCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}
       >
@@ -513,11 +544,15 @@ export default function SecurityScreen() {
           <Pressable
             style={[styles.actionButton, { backgroundColor: buttonBg }]}
             onPress={item.onPress}
+            disabled={isItemBusy}
           >
-            <Text style={[styles.actionButtonText, { color: buttonTextColor }]}
-            >
-              {item.buttonLabel}
-            </Text>
+            {isItemBusy ? (
+              <ActivityIndicator size="small" color={buttonTextColor} />
+            ) : (
+              <Text style={[styles.actionButtonText, { color: buttonTextColor }]}>
+                {item.buttonLabel}
+              </Text>
+            )}
           </Pressable>
         </View>
       </View>
@@ -636,17 +671,22 @@ export default function SecurityScreen() {
         onPasswordChange={handleChangePassword}
         antiPhishingCode={antiPhishingCode}
         antiPhishingOtp={antiPhishingOtp}
+        antiPhishingEnabled={antiPhishingEnabled}
         onAntiPhishingOtpChange={setAntiPhishingOtp}
         antiPhishingBusy={antiPhishingBusy}
         onAntiPhishingRequestOtp={async () => {
+          if (antiPhishingOtpSeconds > 0) return;
           setAntiPhishingError("");
           setAntiPhishingBusy(true);
           const result = await requestAntiPhishingOtp(token ?? undefined);
           setAntiPhishingBusy(false);
           if (!result.success) {
             setAntiPhishingError(result.message ?? "Unable to send OTP.");
+            return;
           }
+          setAntiPhishingOtpSeconds(RESEND_SECONDS);
         }}
+        antiPhishingOtpSeconds={antiPhishingOtpSeconds}
         onAntiPhishingCodeChange={(value) => {
           if (antiPhishingError) setAntiPhishingError("");
           setAntiPhishingCode(value);
@@ -670,7 +710,8 @@ export default function SecurityScreen() {
           );
           setAntiPhishingBusy(false);
           if (!result.success) {
-            setAntiPhishingError(result.message ?? "Unable to enable anti-phishing.");
+            const fieldError = extractFieldError(result.raw);
+            setAntiPhishingError(fieldError || result.message || "Unable to enable anti-phishing.");
             return;
           }
           setShowAntiPhishingModal(false);
@@ -816,6 +857,11 @@ const styles = StyleSheet.create({
     fontFamily: "Geist-SemiBold",
     fontSize: Typography.size.xs,
     lineHeight: Typography.line.xs,
+  },
+  resendButton: {
+    minWidth: 64,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalBackdrop: {
     flex: 1,

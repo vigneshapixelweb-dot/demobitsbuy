@@ -81,6 +81,8 @@ type SecurityModalsProps = {
   }) => Promise<boolean>;
   antiPhishingCode: string;
   antiPhishingOtp: string;
+  antiPhishingEnabled?: boolean;
+  antiPhishingOtpSeconds?: number;
   onAntiPhishingOtpChange: (value: string) => void;
   antiPhishingBusy?: boolean;
   onAntiPhishingRequestOtp?: () => void;
@@ -139,6 +141,8 @@ export default function SecurityModals({
   onPasswordChange,
   antiPhishingCode,
   antiPhishingOtp,
+  antiPhishingEnabled,
+  antiPhishingOtpSeconds = 0,
   onAntiPhishingOtpChange,
   antiPhishingBusy,
   onAntiPhishingRequestOtp,
@@ -148,6 +152,10 @@ export default function SecurityModals({
   AuthenticatorAppIcon,
   styles,
 }: SecurityModalsProps) {
+  const antiPhishingTitle = antiPhishingEnabled ? "Change Anti-Phishing" : "Enable Anti-Phishing";
+  const antiPhishingFieldLabel = antiPhishingEnabled
+    ? "Change Anti-Phishing Code"
+    : "Enable Anti-Phishing Code";
   const [verificationOtp, setVerificationOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [verificationError, setVerificationError] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -159,6 +167,8 @@ export default function SecurityModals({
   const [passwordError, setPasswordError] = useState("");
   const [passwordOtpSeconds, setPasswordOtpSeconds] = useState(0);
   const verificationInputsRef = useRef<Array<TextInput | null>>([]);
+  const antiPhishingOtpLabel =
+    antiPhishingOtpSeconds > 0 ? `Resend in ${antiPhishingOtpSeconds}s` : "Get OTP";
 
   useEffect(() => {
     if (!showVerificationModal) return;
@@ -517,7 +527,7 @@ export default function SecurityModals({
           <View style={[styles.modalCard, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: textPrimary }]}>
-                Enable Anti-Phishing
+                {antiPhishingTitle}
               </Text>
               <Pressable style={styles.modalClose} onPress={() => setShowAntiPhishingModal(false)}>
                 <CloseIcon width={22} height={22} />
@@ -525,7 +535,7 @@ export default function SecurityModals({
             </View>
 
             <Text style={[styles.passwordLabel, { color: textPrimary, marginTop: 12 ,marginBottom: 8}]}>
-              Enable Anti-Phishing Code
+              {antiPhishingFieldLabel}
             </Text>
             <View style={[styles.passwordField, { borderColor: fieldBorder, backgroundColor: fieldBg }]}>
               <TextInput
@@ -550,9 +560,14 @@ export default function SecurityModals({
               />
               <Pressable
                 onPress={onAntiPhishingRequestOtp}
-                disabled={antiPhishingBusy}
+                disabled={antiPhishingBusy || antiPhishingOtpSeconds > 0}
+                style={styles.resendButton}
               >
-                <Text style={[styles.resendLink, { color: palette.accent }]}>Get OTP</Text>
+                {antiPhishingBusy && antiPhishingOtpSeconds === 0 ? (
+                  <ActivityIndicator size="small" color={palette.accent} />
+                ) : (
+                  <Text style={[styles.resendLink, { color: palette.accent }]}>{antiPhishingOtpLabel}</Text>
+                )}
               </Pressable>
             </View>
             <Text style={[styles.passwordInput, { color: textMuted, marginTop: 8, marginBottom: 16 }]}>
@@ -577,9 +592,13 @@ export default function SecurityModals({
                 onPress={onAntiPhishingConfirm}
                 disabled={antiPhishingBusy}
               >
-                <Text style={[styles.verificationButtonText, { color: palette.onPrimary }]}>
-                  Confirm
-                </Text>
+                {antiPhishingBusy ? (
+                  <ActivityIndicator size="small" color={palette.onPrimary} />
+                ) : (
+                  <Text style={[styles.verificationButtonText, { color: palette.onPrimary }]}>
+                    Confirm
+                  </Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -662,7 +681,11 @@ export default function SecurityModals({
                 onPress={handleVerificationResend}
                 disabled={verificationBusy}
               >
-                <Text style={[styles.resendLink, { color: palette.accent }]}>Get Code</Text>
+                {verificationBusy ? (
+                  <ActivityIndicator size="small" color={palette.accent} />
+                ) : (
+                  <Text style={[styles.resendLink, { color: palette.accent }]}>Get Code</Text>
+                )}
               </Pressable>
 
               <View style={styles.verificationButtons}>
@@ -680,9 +703,13 @@ export default function SecurityModals({
                   onPress={handleVerificationConfirm}
                   disabled={verificationBusy}
                 >
-                  <Text style={[styles.verificationButtonText, { color: palette.onPrimary }]}>
-                    {verificationConfirmLabel ?? "Confirm"}
-                  </Text>
+                  {verificationBusy ? (
+                    <ActivityIndicator size="small" color={palette.onPrimary} />
+                  ) : (
+                    <Text style={[styles.verificationButtonText, { color: palette.onPrimary }]}>
+                      {verificationConfirmLabel ?? "Confirm"}
+                    </Text>
+                  )}
                 </Pressable>
               </View>
             </ScrollView>
@@ -775,12 +802,17 @@ export default function SecurityModals({
                     setPasswordOtpSeconds(PASSWORD_OTP_RESEND);
                   }}
                   disabled={passwordBusy || passwordOtpSeconds > 0}
+                  style={styles.resendButton}
                 >
-                  <Text style={[styles.resendLink, { color: palette.accent }]}>
-                    {passwordOtpSeconds > 0
-                      ? `Resend (${passwordOtpSeconds}s)`
-                      : "Get OTP"}
-                  </Text>
+                  {passwordBusy && passwordOtpSeconds === 0 ? (
+                    <ActivityIndicator size="small" color={palette.accent} />
+                  ) : (
+                    <Text style={[styles.resendLink, { color: palette.accent }]}>
+                      {passwordOtpSeconds > 0
+                        ? `Resend (${passwordOtpSeconds}s)`
+                        : "Get OTP"}
+                    </Text>
+                  )}
                 </Pressable>
               </View>
 
@@ -858,7 +890,11 @@ export default function SecurityModals({
                   onPress={handleLoginPasswordConfirm}
                   disabled={passwordBusy}
                 >
-                  <Text style={[styles.passwordActionText, { color: palette.onPrimary }]}>Confirm</Text>
+                  {passwordBusy ? (
+                    <ActivityIndicator size="small" color={palette.onPrimary} />
+                  ) : (
+                    <Text style={[styles.passwordActionText, { color: palette.onPrimary }]}>Confirm</Text>
+                  )}
                 </Pressable>
               </View>
             </ScrollView>
