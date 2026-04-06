@@ -98,7 +98,7 @@ export default function TabLayout() {
   }
 
   return (
-    <NativeTabs
+    <NativeTabs 
       backgroundColor={withAlpha(isDark ? palette.backgroundAlt : palette.background, isDark ? 0.86 : 0.92)}
       iconColor={{ default: palette.textMuted, selected: selectedColor }}
       labelStyle={{

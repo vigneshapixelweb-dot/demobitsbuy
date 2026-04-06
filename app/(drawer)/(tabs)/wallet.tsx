@@ -4,9 +4,12 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { DrawerActions, TabActions, useNavigation } from "@react-navigation/native";
 import type { SvgProps } from "react-native-svg";
+import { SvgUri } from "react-native-svg";
 import {
   Alert,
   Animated,
+  ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,8 +39,6 @@ import {
   formatWalletAssetAmount,
   formatWalletPrimaryBalance,
   WALLET_ACTIONS,
-  WALLET_BALANCE_BY_SEGMENT,
-  WALLET_COINS,
   WALLET_CURRENCIES,
   type WalletActionKey,
   WALLET_SEGMENTS,
@@ -48,6 +49,9 @@ import { Spacing } from "@/constants/spacing";
 import { AppColors } from "@/constants/theme";
 import { Typography } from "@/constants/typography";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useAuthStore } from "@/stores/auth-store";
+import { fetchWallet, type WalletAsset } from "@/services/wallet/wallet";
+import { getCoinImageMap } from "@/services/coindetails/coinImageService";
 
 type ActionConfig = {
   key: WalletActionKey;
@@ -87,6 +91,15 @@ const withAlpha = (color: string, alpha: number) => {
   return `rgba(${r}, ${g}, ${b}, ${safeAlpha})`;
 };
 
+const BADGE_COLORS = ["#F7931A", "#627EEA", "#F3BA2F", "#FF060A", "#345D9D", "#1C1E24", "#26A17B"];
+const pickBadgeColor = (symbol: string) => {
+  let hash = 0;
+  for (let i = 0; i < symbol.length; i += 1) {
+    hash = (hash * 31 + symbol.charCodeAt(i)) % 997;
+  }
+  return BADGE_COLORS[hash % BADGE_COLORS.length];
+};
+
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -99,6 +112,11 @@ export default function WalletScreen() {
   const [selectedCurrency, setSelectedCurrency] = useState<BalanceCurrency>("BTC");
   const [isBalanceHidden, setIsBalanceHidden] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [assets, setAssets] = useState<WalletAsset[]>([]);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState("");
+  const [coinImages, setCoinImages] = useState<Record<string, string>>({});
+  const token = useAuthStore((state) => state.token);
 
   const segmentLayouts = useRef<{ x: number; width: number }[]>([]);
   const indicatorX = useRef(new Animated.Value(0)).current;
@@ -117,7 +135,30 @@ export default function WalletScreen() {
   );
 
   const activeSegmentIndex = WALLET_SEGMENTS.findIndex((item) => item.key === activeSegment);
-  const balance = WALLET_BALANCE_BY_SEGMENT[activeSegment];
+  const totals = useMemo(() => {
+    const initial = {
+      overview: { usd: 0, btc: 0 },
+      spot: { usd: 0, btc: 0 },
+      funding: { usd: 0, btc: 0 },
+    };
+    if (!assets.length) return initial;
+    const totalsUsd = assets.reduce(
+      (acc, asset) => {
+        acc.overview += asset.usdBalances.overview;
+        acc.spot += asset.usdBalances.spot;
+        acc.funding += asset.usdBalances.funding;
+        return acc;
+      },
+      { overview: 0, spot: 0, funding: 0 },
+    );
+    const btcPrice = assets.find((asset) => asset.symbol === "BTC")?.priceUsd ?? 0;
+    return {
+      overview: { usd: totalsUsd.overview, btc: btcPrice ? totalsUsd.overview / btcPrice : 0 },
+      spot: { usd: totalsUsd.spot, btc: btcPrice ? totalsUsd.spot / btcPrice : 0 },
+      funding: { usd: totalsUsd.funding, btc: btcPrice ? totalsUsd.funding / btcPrice : 0 },
+    };
+  }, [assets]);
+  const balance = totals[activeSegment];
   const HideIcon = isDark ? BalanceHideDark : BalanceHideLight;
   const ContentBox = isDark ? WalletContentDark : WalletContentLight;
   const pageBackground = palette.background;
@@ -143,11 +184,52 @@ export default function WalletScreen() {
 
   const filteredCoins = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword) return WALLET_COINS;
-    return WALLET_COINS.filter((coin) => {
+    if (!keyword) return assets;
+    return assets.filter((coin) => {
       return coin.symbol.toLowerCase().includes(keyword) || coin.name.toLowerCase().includes(keyword);
     });
-  }, [searchQuery]);
+  }, [assets, searchQuery]);
+
+  useEffect(() => {
+    if (!token) return;
+    let isActive = true;
+    const loadWallet = async () => {
+      setWalletLoading(true);
+      const result = await fetchWallet(token ?? undefined);
+      if (!isActive) return;
+      if (!result.success) {
+        setWalletError(result.message ?? "Unable to load wallet.");
+        setAssets([]);
+      } else {
+        setWalletError("");
+        setAssets(result.data?.assets ?? []);
+      }
+      setWalletLoading(false);
+    };
+    loadWallet();
+    return () => {
+      isActive = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadImages = async () => {
+      if (!assets.length) {
+        setCoinImages({});
+        return;
+      }
+      const symbols = assets.map((asset) => asset.symbol);
+      const map = await getCoinImageMap(symbols);
+      if (isActive) {
+        setCoinImages(map);
+      }
+    };
+    loadImages();
+    return () => {
+      isActive = false;
+    };
+  }, [assets]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -401,6 +483,15 @@ export default function WalletScreen() {
             />
           </View>
         </View>
+        {walletLoading ? (
+          <View style={styles.walletLoader}>
+            <ActivityIndicator size="small" color={textMuted} />
+            <Text style={[styles.walletLoaderText, { color: textMuted }]}>Loading wallet...</Text>
+          </View>
+        ) : null}
+        {!walletLoading && walletError ? (
+          <Text style={[styles.walletErrorText, { color: "#DE2E42" }]}>{walletError}</Text>
+        ) : null}
 
         <View style={styles.assetTableHeader}>
           <Text style={[styles.assetTableHeaderText, { color: textMuted }]}>Coin</Text>
@@ -411,19 +502,32 @@ export default function WalletScreen() {
 
         <View style={[styles.assetList, { borderTopColor: rowDivider }]}>
           {filteredCoins.map((coin, index) => {
-            const amount = coin.holdings[activeSegment];
-            const fiatValue = amount * coin.priceUsd;
+            const amount = coin.balances[activeSegment];
+            const fiatValue = coin.usdBalances[activeSegment];
+            const badgeText = coin.symbol.length <= 2 ? coin.symbol : coin.symbol.slice(0, 2);
+            const badgeColor = pickBadgeColor(coin.symbol);
+            const mappedImage = coinImages[coin.symbol];
+            const imageUrl = mappedImage || coin.imageUrl || "";
+            const isSvg = imageUrl.toLowerCase().endsWith(".svg");
             return (
               <Pressable
-                key={coin.key}
+                key={coin.id ?? `${coin.symbol}-${index}`}
                 onPress={() => router.push("/(drawer)/(tabs)/trade")}
                 style={[
                   styles.assetRow,
                 ]}
               >
                 <View style={styles.assetLeft}>
-                  <View style={[styles.coinBadge, { backgroundColor: coin.badgeColor }]}>
-                    <Text style={[styles.coinBadgeText, { color: palette.onPrimary }]}>{coin.badgeText}</Text>
+                  <View style={[styles.coinBadge, ]}>
+                    {imageUrl ? (
+                      isSvg ? (
+                        <SvgUri width={20} height={20} uri={imageUrl} />
+                      ) : (
+                        <Image source={{ uri: imageUrl }} style={styles.coinImage} />
+                      )
+                    ) : (
+                      <Text style={[styles.coinBadgeText, { color: palette.onPrimary }]}>{badgeText}</Text>
+                    )}
                   </View>
                   <View>
                     <Text style={[styles.coinSymbol, { color: textPrimary }]}>{coin.symbol}</Text>
@@ -617,6 +721,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: Spacing.lg,
   },
+  walletLoader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  walletLoaderText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
+  },
+  walletErrorText: {
+    fontFamily: "Geist-Regular",
+    fontSize: Typography.size.xs,
+    lineHeight: Typography.line.xs,
+    marginBottom: Spacing.sm,
+  },
   assetTitle: {
     fontSize: Typography.size.md,
     lineHeight: Typography.line.lg + 2,
@@ -671,9 +792,14 @@ const styles = StyleSheet.create({
   coinBadge: {
     width: 40,
     height: 40,
-    borderRadius: Radii.pill,
-    alignItems: "center",
-    justifyContent: "center",
+    // borderRadius: Radii.pill,
+    // alignItems: "center",
+    // justifyContent: "center",
+  },
+  coinImage: {
+    width: 40,
+    height: 40,
+    // resizeMode: "contain",
   },
   coinBadgeText: {
     fontSize: Typography.size.sm,
